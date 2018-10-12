@@ -42,6 +42,7 @@ par = {
     'survival_rate'         : 0.10,
     'mutation_rate'         : 0.25,
     'mutation_strength'     : 0.80,
+    'cross_rate'            : 0.50,
 
     'task'                  : 'dms',
     'kappa'                 : 2.0,

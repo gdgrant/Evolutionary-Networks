@@ -21,7 +21,7 @@ class NetworkController:
         """ Pull constants into GPU """
 
         constant_names = ['alpha_neuron', 'noise_rnn', 'W_rnn_mask', \
-            'mutation_rate', 'mutation_strength']
+            'mutation_rate', 'mutation_strength', 'cross_rate']
         stp_constants = ['syn_x_init', 'syn_u_init', 'U', 'alpha_stf', 'alpha_std', 'dt_sec']
 
         constant_names += stp_constants if par['use_stp'] else []
@@ -111,6 +111,10 @@ class NetworkController:
 
         for s, name in itertools.product(range(par['num_survivors']), self.var_dict.keys()):
             indices = cp.arange(s+par['num_survivors'],par['n_networks'],par['num_survivors'])
+            m       = to_gpu(np.random.choice(np.setdiff1d(np.arange(par['num_survivors']), s)))
+
+            self.var_dict[name][indices,...] = cross(self.var_dict[name][s,...], self.var_dict[name][m,...], \
+                par['cross_rate'])
             self.var_dict[name][indices,...] = mutate(self.var_dict[name][s,...], indices.shape[0], \
                 self.con_dict['mutation_rate'], self.con_dict['mutation_strength'])
 
@@ -140,7 +144,7 @@ def main():
 
         if i%par['iters_per_output'] == 0:
             accuracy = control.get_performance()
-            print('Iter: {:3} | Loss: {:5.3f} | Acc: {:5.3f} | Mut. Str.: {:5.3f}'.format( \
+            print('Iter: {:4} | Loss: {:5.3f} | Acc: {:5.3f} | Mut. Str.: {:5.3f}'.format( \
             i, np.mean(loss[:par['num_survivors']]), np.mean(accuracy[:par['num_survivors']]), \
             mutation_strength))
 

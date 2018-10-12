@@ -26,6 +26,11 @@ def softmax(x, a=-1):
     c = cp.exp(x-cp.amax(x, axis=a, keepdims=True))
     return c/cp.sum(c, axis=a, keepdims=True)
 
+def cross(var1, var2, rate):
+    """ Transmit some of var2 over to var1, based on the give rate """
+    return cp.where(cp.random.choice([True,False], size=var1.shape, p=[rate, 1-rate]), var1, var2)
+
+
 def mutate(var, num, rate, scale):
     """ Mutates a given variable by a given rate and scale,
         generating as many offspring as num """
