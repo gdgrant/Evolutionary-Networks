@@ -30,6 +30,13 @@ class NetworkController:
             self.con_dict[c] = to_gpu(par[c])
 
 
+    def update_mutation_constants(self, strength, rate):
+        """ Update the mutation strength and rate """
+
+        self.con_dict['mutation_strength'] = to_gpu(strength)
+        self.con_dict['mutation_rate']     = to_gpu(rate)
+
+
     def run_models(self, input_data):
         """ Run model based on input data, collecting
             network states into h and network outputs into y """
@@ -78,19 +85,24 @@ class NetworkController:
         """ Determine the loss and accuracy of each model,
             and rank them accordingly """
 
-        output_data = to_gpu(output_data)
-        output_mask = to_gpu(output_mask)
+        self.output_data = to_gpu(output_data)
+        self.output_mask = to_gpu(output_mask)
         eps = 1e-7
 
-        self.loss = -cp.mean(output_mask[...,cp.newaxis]*softmax(self.y)*cp.log(output_data+eps), axis=(0,2,3))
+        self.loss = -cp.mean(self.output_mask[...,cp.newaxis]*softmax(self.y)*cp.log(self.output_data+eps), axis=(0,2,3))
         self.rank = cp.argsort(self.loss)
 
         for name in self.var_dict.keys():
             self.var_dict[name] = self.var_dict[name][self.rank,...]
 
-        self.accuracy = accuracy(self.y, output_data, output_mask)
+        return to_cpu(self.loss)
 
-        return to_cpu(self.loss), to_cpu(self.accuracy)
+
+    def get_performance(self):
+        """ Only output accuracy when requested """
+
+        self.accuracy = accuracy(self.y, self.output_data, self.output_mask)
+        return to_cpu(self.accuracy)
 
 
     def breed_models(self):
@@ -111,15 +123,26 @@ def main():
 
     stim = Stimulus()
 
+    # Get loss baseline
+    trial_info = stim.make_batch()
+    control.run_models(trial_info['neural_input'])
+    loss_baseline = np.mean(control.judge_models(trial_info['desired_output'], trial_info['train_mask']))
+
     for i in range(par['iterations']):
 
         trial_info = stim.make_batch()
-
         control.run_models(trial_info['neural_input'])
-        loss, accuracy = control.judge_models(trial_info['desired_output'], trial_info['train_mask'])
+        loss = control.judge_models(trial_info['desired_output'], trial_info['train_mask'])
 
-        print('Iter {} | Loss {:5.3f} | Acc {:5.3f}'.format(i, np.mean(loss[:par['num_survivors']]), np.mean(accuracy[:par['num_survivors']])))
+        mutation_strength = par['mutation_strength']*np.mean(loss)/loss_baseline
+        control.update_mutation_constants(mutation_strength, par['mutation_rate'])
         control.breed_models()
+
+        if i%par['iters_per_output'] == 0:
+            accuracy = control.get_performance()
+            print('Iter: {:3} | Loss: {:5.3f} | Acc: {:5.3f} | Mut. Str.: {:5.3f}'.format( \
+            i, np.mean(loss[:par['num_survivors']]), np.mean(accuracy[:par['num_survivors']]), \
+            mutation_strength))
 
 
 if __name__ == '__main__':
