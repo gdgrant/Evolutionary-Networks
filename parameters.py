@@ -5,6 +5,7 @@ global par
 par = {
 
     'save_dir'              : './savedir/',
+    'use_stp'               : True,
 
     'n_networks'            : 200,
     'n_hidden'              : 250,
@@ -34,6 +35,9 @@ par = {
     'test_time'             : 200,
     'mask_time'             : 50,
 
+    'tau_fast'              : 200,
+    'tau_slow'              : 1500,
+
     'survival_rate'         : 0.10,
     'mutation_rate'         : 0.25,
     'mutation_strength'     : 0.50,
@@ -41,6 +45,7 @@ par = {
     'task'                  : 'dms',
     'kappa'                 : 2.0,
     'tuning_height'         : 4.0,
+    'response_multiplier'   : 4.0,
     'num_rules'             : 1,
 
 }
@@ -64,12 +69,34 @@ def update_dependencies():
     par['W_rnn_mask']   = 1 - np.eye(par['n_hidden'])[np.newaxis,:,:]
     par['W_rnn_init']  *= par['W_rnn_mask']
 
+    par['dt_sec']       = par['dt']/1000
     par['alpha_neuron'] = np.float32(par['dt']/par['membrane_constant'])
     par['noise_rnn']    = np.sqrt(2*par['alpha_neuron'])*par['noise_rnn_sd']
     par['noise_in']     = np.sqrt(2/par['alpha_neuron'])*par['noise_rnn_sd']
 
     par['num_survivors'] = int(par['n_networks'] * par['survival_rate'])
 
+
+    if par['use_stp']:
+        par['alpha_stf']  = np.ones((1, 1, par['n_hidden']), dtype=np.float32)
+        par['alpha_std']  = np.ones((1, 1, par['n_hidden']), dtype=np.float32)
+        par['U']          = np.ones((1, 1, par['n_hidden']), dtype=np.float32)
+
+        par['syn_x_init'] = np.zeros((1, 1, par['n_hidden']), dtype=np.float32)
+        par['syn_u_init'] = np.zeros((1, 1, par['n_hidden']), dtype=np.float32)
+
+        for i in range(0,par['n_hidden'],2):
+            par['alpha_stf'][0,0,i] = par['dt']/par['tau_slow']
+            par['alpha_std'][0,0,i] = par['dt']/par['tau_fast']
+            par['U'][0,0,i] = 0.15
+            par['syn_x_init'][0,0,i] = 1
+            par['syn_u_init'][0,0,i] = par['U'][0,0,i+1]
+
+            par['alpha_stf'][0,0,i+1] = par['dt']/par['tau_fast']
+            par['alpha_std'][0,0,i+1] = par['dt']/par['tau_slow']
+            par['U'][0,0,i+1] = 0.45
+            par['syn_x_init'][0,0,i+1] = 1
+            par['syn_u_init'][0,0,i+1] = par['U'][0,0,i+1]
 
 
 update_dependencies()
