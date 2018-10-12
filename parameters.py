@@ -4,35 +4,54 @@ print('\n--> Loading parameters...')
 global par
 par = {
 
-    'save_dir'          : './savedir/',
+    'save_dir'              : './savedir/',
 
-    'n_networks'        : 100,
-    'n_input'           : 40,
-    'n_hidden'          : 250,
-    'n_output'          : 12,
+    'n_networks'            : 200,
+    'n_hidden'              : 250,
+    'n_output'              : 3,
 
-    'batch_size'        : 128,
-    'n_batches'         : 501,
+    'num_motion_tuned'      : 32,
+    'num_fix_tuned'         : 2,
+    'num_rule_tuned'        : 2,
+    'num_receptive_fields'  : 1,
+    'num_motion_dirs'       : 8,
 
-    'input_gamma'       : 0.2,
-    'rnn_gamma'         : 0.025,
-    'noise_rnn_sd'      : 0.05,
+    'batch_size'            : 128,
+    'iterations'            : 501,
 
-    'trial_length'      : 2000,
-    'dt'                : 20,
-    'membrane_constant' : 100,
+    'input_gamma'           : 0.2,
+    'rnn_gamma'             : 0.025,
+    'noise_rnn_sd'          : 0.05,
+    'noise_in_sd'           : 0.05,
 
-    'survival_rate'     : 0.1,
-    'mutation_rate'     : 0.5,
-    'mutation_strength' : 1.0,
+    'dt'                    : 20,
+    'membrane_constant'     : 100,
+
+    'dead_time'             : 100,
+    'fix_time'              : 200,
+    'sample_time'           : 200,
+    'delay_time'            : 200,
+    'test_time'             : 200,
+    'mask_time'             : 50,
+
+    'survival_rate'         : 0.10,
+    'mutation_rate'         : 0.25,
+    'mutation_strength'     : 0.50,
+
+    'task'                  : 'dms',
+    'kappa'                 : 2.0,
+    'tuning_height'         : 4.0,
+    'num_rules'             : 1,
 
 }
 
 
 def update_dependencies():
 
+    par['trial_length'] = par['dead_time'] + par['fix_time'] + +par['sample_time'] + par['delay_time'] + par['test_time']
     par['num_time_steps'] = par['trial_length'] // par['dt']
 
+    par['n_input'] = par['num_motion_tuned']*par['num_receptive_fields'] + par['num_fix_tuned'] + par['num_rule_tuned']
 
     par['h_init_init']  = 0.1*np.ones([par['n_networks'], 1,par['n_hidden']], dtype=np.float32)
     par['W_in_init']    = np.float32(np.random.gamma(shape=par['input_gamma'], scale=1., size=[par['n_networks'], par['n_input'], par['n_hidden']]))
@@ -47,6 +66,7 @@ def update_dependencies():
 
     par['alpha_neuron'] = np.float32(par['dt']/par['membrane_constant'])
     par['noise_rnn']    = np.sqrt(2*par['alpha_neuron'])*par['noise_rnn_sd']
+    par['noise_in']     = np.sqrt(2/par['alpha_neuron'])*par['noise_rnn_sd']
 
     par['num_survivors'] = int(par['n_networks'] * par['survival_rate'])
 

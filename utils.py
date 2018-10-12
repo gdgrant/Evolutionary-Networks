@@ -12,7 +12,7 @@ else:
 def to_gpu(x):
     return cp.asarray(x)
 
-def from_gpu(x):
+def to_cpu(x):
     return cp.asnumpy(x)
 
 def relu(x):
@@ -27,3 +27,11 @@ def mutate(var, num, rate, scale):
     mutation = cp.random.normal(scale=scale, size=[num, *var.shape])
 
     return var[cp.newaxis,...] + mutation*mutation_mask
+
+def accuracy(output, target, mask):
+
+    arg_output = cp.argmax(output, -1)
+    arg_target = cp.argmax(target, -1)
+    mask = mask * (arg_target != 0)
+
+    return cp.mean(mask * (arg_output == arg_target), axis=(0,2))

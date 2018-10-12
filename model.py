@@ -1,6 +1,6 @@
 from utils import *
 from parameters import par, update_dependencies
-
+from stimulus import Stimulus
 
 class NetworkController:
 
@@ -49,7 +49,7 @@ class NetworkController:
         h = relu((1-self.con_dict['alpha_neuron'])*h \
             + self.con_dict['alpha_neuron']*(cp.matmul(rnn_input, self.var_dict['W_in']) \
             + cp.matmul(h, self.var_dict['W_rnn']) + self.var_dict['b_rnn']) + \
-            + cp.random.normal(scale=self.con_dict['noise_rnn'], size=h.shape, dtype=np.float32))
+            + cp.random.normal(scale=self.con_dict['noise_rnn'], size=h.shape))
 
         return h
 
@@ -62,11 +62,15 @@ class NetworkController:
         output_mask = to_gpu(output_mask)
         eps = 1e-7
 
-        self.loss = -cp.sum(softmax(self.y)*cp.log(output_data+eps), axis=(0,2,3))
+        self.loss = -cp.mean(softmax(self.y)*cp.log(output_data+eps), axis=(0,2,3))
         self.rank = cp.argsort(self.loss)
 
         for name in self.var_dict.keys():
             self.var_dict[name] = self.var_dict[name][self.rank,...]
+
+        self.accuracy = accuracy(self.y, output_data, output_mask)
+
+        return to_cpu(self.loss), to_cpu(self.accuracy)
 
 
     def breed_models(self):
@@ -84,11 +88,18 @@ def main():
     control = NetworkController()
     control.make_variables()
     control.make_constants()
-    control.run_models(np.ones([par['num_time_steps'],par['n_networks'],par['batch_size'],par['n_input']]))
-    control.judge_models(np.ones([par['num_time_steps'],par['n_networks'],par['batch_size'],par['n_output']]),
-        np.ones([par['num_time_steps'],par['n_networks'],par['batch_size'],par['n_output']]))
-    control.breed_models()
 
+    stim = Stimulus()
+
+    for i in range(par['iterations']):
+
+        trial_info = stim.make_batch()
+
+        control.run_models(trial_info['neural_input'])
+        loss, accuracy = control.judge_models(trial_info['desired_output'], trial_info['train_mask'])
+
+        print('Iter {} | Loss {:5.3f} | Acc {:5.3f}'.format(i, np.mean(loss[:par['num_survivors']]), np.mean(accuracy[:par['num_survivors']])))
+        control.breed_models()
 
 
 if __name__ == '__main__':
