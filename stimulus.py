@@ -38,6 +38,7 @@ class Stimulus:
 
         trial_info['train_mask'][:end_dead_time,...] = 0.
         trial_info['train_mask'][end_delay_time:end_mask_time,...] = 0.
+        trial_info['train_mask'][end_mask_time:end_test_time,...] = par['response_multiplier']
 
         match = np.random.choice([True, False], size=par['batch_size'])
         sample_direction   = np.random.choice(par['num_motion_dirs'], size=par['batch_size'])

@@ -16,7 +16,7 @@ def to_cpu(x):
     return cp.asnumpy(x)
 
 def relu(x):
-    return cp.maximum(0, x)
+    return cp.maximum(0., x)
 
 def softmax(x, a=-1):
     c = cp.exp(x-cp.amax(x, axis=a, keepdims=True))

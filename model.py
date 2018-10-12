@@ -22,6 +22,9 @@ class NetworkController:
 
         constant_names = ['alpha_neuron', 'noise_rnn', 'W_rnn_mask', \
             'mutation_rate', 'mutation_strength']
+        stp_constants = ['syn_x_init', 'syn_u_init', 'U', 'alpha_stf', 'alpha_std', 'dt_sec']
+
+        constant_names += stp_constants if par['use_stp'] else []
         self.con_dict = {}
         for c in constant_names:
             self.con_dict[c] = to_gpu(par[c])
@@ -32,26 +35,43 @@ class NetworkController:
             network states into h and network outputs into y """
 
         input_data = to_gpu(input_data)
-        self.h = cp.zeros([par['num_time_steps'], par['n_networks'], par['batch_size'], par['n_hidden']])
-        self.h[-1,:,:,:] = self.var_dict['h_init']   # Put init in last time step, to be overwritten at end of trial
+
+        self.h     = cp.zeros([par['num_time_steps'], par['n_networks'], par['batch_size'], par['n_hidden']])
+        self.syn_x = cp.zeros([par['num_time_steps'], par['n_networks'], par['batch_size'], par['n_hidden']])
+        self.syn_u = cp.zeros([par['num_time_steps'], par['n_networks'], par['batch_size'], par['n_hidden']])
+
+        # Put init in last time step, to be overwritten at end of trial
+        self.h[-1,:,:,:]        = self.var_dict['h_init']
+        self.syn_x[-1,:,:,:]    = self.con_dict['syn_x_init']
+        self.syn_u[-1,:,:,:]    = self.con_dict['syn_u_init']
 
         # input_data = [time, networks, trials, neurons]
         for t in range(par['num_time_steps']):
-            self.h[t,:,:,:] = self.recurrent_cell(self.h[t-1,:,:,:], input_data[t,:,:,:])
+            self.h[t,:,:,:], self.syn_x[t,:,:,:], self.syn_u[t,:,:,:] = \
+                self.recurrent_cell(self.h[t-1,:,:,:], input_data[t,:,:,:], self.syn_x[t-1,:,:,:], self.syn_u[t-1,:,:,:])
 
         self.y = cp.matmul(self.h, self.var_dict['W_out']) + self.var_dict['b_out']
 
 
-    def recurrent_cell(self, h, rnn_input):
+    def recurrent_cell(self, h, rnn_input, syn_x, syn_u):
         """ Process one time step of the hidden layer
             based on the previous state and the current input """
 
+        if par['use_stp']:
+            syn_x += self.con_dict['alpha_std']*(1-syn_x) - self.con_dict['dt_sec']*syn_u*syn_x*h
+            syn_u += self.con_dict['alpha_stf']*(self.con_dict['U']-syn_x) - self.con_dict['dt_sec']*self.con_dict['U']*(1-syn_u)*h
+            syn_x = cp.minimum(1., relu(syn_x))
+            syn_u = cp.minimum(1., relu(syn_u))
+            h_post = syn_u*syn_x*h
+        else:
+            h_post = h
+
         h = relu((1-self.con_dict['alpha_neuron'])*h \
             + self.con_dict['alpha_neuron']*(cp.matmul(rnn_input, self.var_dict['W_in']) \
-            + cp.matmul(h, self.var_dict['W_rnn']) + self.var_dict['b_rnn']) + \
+            + cp.matmul(h_post, self.var_dict['W_rnn']) + self.var_dict['b_rnn']) + \
             + cp.random.normal(scale=self.con_dict['noise_rnn'], size=h.shape))
 
-        return h
+        return h, syn_x, syn_u
 
 
     def judge_models(self, output_data, output_mask):
@@ -62,7 +82,7 @@ class NetworkController:
         output_mask = to_gpu(output_mask)
         eps = 1e-7
 
-        self.loss = -cp.mean(softmax(self.y)*cp.log(output_data+eps), axis=(0,2,3))
+        self.loss = -cp.mean(output_mask[...,cp.newaxis]*softmax(self.y)*cp.log(output_data+eps), axis=(0,2,3))
         self.rank = cp.argsort(self.loss)
 
         for name in self.var_dict.keys():
