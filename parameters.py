@@ -6,6 +6,7 @@ par = {
 
     'save_dir'              : './savedir/',
     'use_stp'               : True,
+    'iters_per_output'      : 5,
 
     'n_networks'            : 200,
     'n_hidden'              : 250,
@@ -18,7 +19,7 @@ par = {
     'num_motion_dirs'       : 8,
 
     'batch_size'            : 128,
-    'iterations'            : 501,
+    'iterations'            : 2001,
 
     'input_gamma'           : 0.2,
     'rnn_gamma'             : 0.025,
@@ -40,7 +41,7 @@ par = {
 
     'survival_rate'         : 0.10,
     'mutation_rate'         : 0.25,
-    'mutation_strength'     : 0.50,
+    'mutation_strength'     : 0.80,
 
     'task'                  : 'dms',
     'kappa'                 : 2.0,
