@@ -5,14 +5,16 @@ global par
 par = {
 
     'save_dir'              : './savedir/',
+    'save_fn'               : 'testing',
     'use_stp'               : True,
+    'EI_prop'               : 0.8,
     'iters_per_output'      : 5,
 
     'n_networks'            : 200,
-    'n_hidden'              : 250,
+    'n_hidden'              : 240,
     'n_output'              : 3,
 
-    'num_motion_tuned'      : 32,
+    'num_motion_tuned'      : 24,
     'num_fix_tuned'         : 2,
     'num_rule_tuned'        : 2,
     'num_receptive_fields'  : 1,
@@ -41,8 +43,8 @@ par = {
 
     'survival_rate'         : 0.10,
     'mutation_rate'         : 0.25,
-    'mutation_strength'     : 0.80,
-    'cross_rate'            : 0.50,
+    'mutation_strength'     : 1.00,
+    'cross_rate'            : 0.25,
 
     'task'                  : 'dms',
     'kappa'                 : 2.0,
@@ -51,6 +53,12 @@ par = {
     'num_rules'             : 1,
 
 }
+
+def update_parameters(updates):
+    for k in updates.keys():
+        print(k.ljust(24), ': {}'.format(updates[k]))
+        par[k] = updates[k]
+    update_dependencies()
 
 
 def update_dependencies():
@@ -70,6 +78,10 @@ def update_dependencies():
 
     par['W_rnn_mask']   = 1 - np.eye(par['n_hidden'])[np.newaxis,:,:]
     par['W_rnn_init']  *= par['W_rnn_mask']
+
+    par['EI_vector']    = np.ones(par['n_hidden'])
+    par['EI_vector'][int(par['n_hidden']*par['EI_prop']):] *= -1
+    par['EI_mask']      = np.diag(par['EI_vector'])[np.newaxis,:,:]
 
     par['dt_sec']       = par['dt']/1000
     par['alpha_neuron'] = np.float32(par['dt']/par['membrane_constant'])
