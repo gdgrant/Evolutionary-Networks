@@ -11,8 +11,8 @@ ext     = '.pkl'
 fig, ax = plt.subplots(1,2, sharex=True)
 plt.suptitle('Mean Accuracy Curve of Top 10% Evolved Models')
 
-titles = ['Same, but with MS disjoint', '250 Hidden Neurons, 24 Motion Neurons, $MS_0=1.0$']
-for fn, id, title in zip(['further_ms_disjoint', 'larger_network_higher_strength'], [0,1], titles):
+titles = ['Half-Precision v0', 'Half-Precision v1']
+for fn, id, title in zip(['baseline_v0', 'baseline_v1'], [0,1], titles):
     data = pickle.load(open(savedir+fn+ext, 'rb'))
 
     iters    = data['iter']
@@ -29,7 +29,8 @@ for fn, id, title in zip(['further_ms_disjoint', 'larger_network_higher_strength
 
 
     ax[id].grid()
-    ax[id].set_xlim(iters[0], iters[-1])
+    if id == 1:
+        ax[id].set_xlim(0, 2000)
     ax[id].set_ylim(0,1)
     ax[id].set_yticks(np.linspace(0,1,11))
     ax[id].set_xlabel('Iteration')
