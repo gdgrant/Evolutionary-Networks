@@ -154,11 +154,13 @@ def main():
         control.run_models(trial_info['neural_input'])
         loss = control.judge_models(trial_info['desired_output'], trial_info['train_mask'])
 
-        mutation_strength = par['mutation_strength']*np.power(np.mean(loss)/loss_baseline, 1.1)
-        """if np.mean(loss)/loss_baseline < 0.05:
+        mutation_strength = par['mutation_strength']*np.mean(loss)/loss_baseline
+        if np.mean(loss)/loss_baseline < 0.025:
+            mutation_strength = par['mutation_strength']*np.mean(loss)/loss_baseline * (1/8)
+        elif np.mean(loss)/loss_baseline < 0.05:
             mutation_strength = par['mutation_strength']*np.mean(loss)/loss_baseline * (1/4)
         elif np.mean(loss)/loss_baseline < 0.1:
-            mutation_strength = par['mutation_strength']*np.mean(loss)/loss_baseline * (1/2)"""
+            mutation_strength = par['mutation_strength']*np.mean(loss)/loss_baseline * (1/2)
         control.update_mutation_constants(mutation_strength, par['mutation_rate'])
         control.breed_models()
 
@@ -173,8 +175,8 @@ def main():
             pickle.dump(save_record, open(par['save_dir']+par['save_fn']+'.pkl', 'wb'))
 
             print('Iter: {:4} | Loss: {:5.3f} | Task Acc: {:5.3f} | Full Acc: {:5.3f} | Mut. Str.: {:5.3f}'.format( \
-            i, np.mean(loss[:par['num_survivors']]), np.mean(task_accuracy[:par['num_survivors']]), \
-            np.mean(full_accuracy[:par['num_survivors']]), mutation_strength))
+                i, np.mean(loss[:par['num_survivors']]), np.mean(task_accuracy[:par['num_survivors']]), \
+                np.mean(full_accuracy[:par['num_survivors']]), mutation_strength))
 
 
 if __name__ == '__main__':
