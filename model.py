@@ -21,7 +21,7 @@ class NetworkController:
         """ Pull constants into GPU """
 
         constant_names = ['alpha_neuron', 'noise_rnn', 'W_rnn_mask', \
-            'mutation_rate', 'mutation_strength', 'cross_rate']
+            'mutation_rate', 'mutation_strength', 'cross_rate', 'EI_mask']
         stp_constants = ['syn_x_init', 'syn_u_init', 'U', 'alpha_stf', 'alpha_std', 'dt_sec']
 
         constant_names += stp_constants if par['use_stp'] else []
@@ -52,6 +52,8 @@ class NetworkController:
         self.syn_x[-1,:,:,:]    = self.con_dict['syn_x_init']
         self.syn_u[-1,:,:,:]    = self.con_dict['syn_u_init']
 
+        self.W_rnn_effective = apply_EI(self.var_dict['W_rnn'], self.con_dict['EI_mask'])
+
         # input_data = [time, networks, trials, neurons]
         for t in range(par['num_time_steps']):
             self.h[t,:,:,:], self.syn_x[t,:,:,:], self.syn_u[t,:,:,:] = \
@@ -75,7 +77,7 @@ class NetworkController:
 
         h = relu((1-self.con_dict['alpha_neuron'])*h \
             + self.con_dict['alpha_neuron']*(cp.matmul(rnn_input, self.var_dict['W_in']) \
-            + cp.matmul(h_post, self.var_dict['W_rnn']) + self.var_dict['b_rnn']) + \
+            + cp.matmul(h_post, self.W_rnn_effective) + self.var_dict['b_rnn']) + \
             + cp.random.normal(scale=self.con_dict['noise_rnn'], size=h.shape))
 
         return h, syn_x, syn_u
@@ -101,8 +103,9 @@ class NetworkController:
     def get_performance(self):
         """ Only output accuracy when requested """
 
-        self.accuracy = accuracy(self.y, self.output_data, self.output_mask)
-        return to_cpu(self.accuracy)
+        self.task_accuracy = accuracy(self.y, self.output_data, self.output_mask)
+        self.full_accuracy = accuracy(self.y, self.output_data, self.output_mask, inc_fix=False)
+        return to_cpu(self.task_accuracy), to_cpu(self.full_accuracy)
 
 
     def breed_models(self):
@@ -111,15 +114,19 @@ class NetworkController:
 
         for s, name in itertools.product(range(par['num_survivors']), self.var_dict.keys()):
             indices = cp.arange(s+par['num_survivors'],par['n_networks'],par['num_survivors'])
-            m       = to_gpu(np.random.choice(np.setdiff1d(np.arange(par['num_survivors']), s)))
+            mate_id = to_gpu(np.random.choice(np.setdiff1d(np.arange(par['num_survivors']), s)))
 
-            self.var_dict[name][indices,...] = cross(self.var_dict[name][s,...], self.var_dict[name][m,...], \
+            self.var_dict[name][indices,...] = cross(self.var_dict[name][s,...], self.var_dict[name][mate_id,...], \
                 par['cross_rate'])
             self.var_dict[name][indices,...] = mutate(self.var_dict[name][s,...], indices.shape[0], \
                 self.con_dict['mutation_rate'], self.con_dict['mutation_strength'])
 
+        self.var_dict['W_rnn'] *= self.con_dict['W_rnn_mask']
+
 
 def main():
+
+    print('\nStarting model run: {}'.format(par['save_fn']))
 
     control = NetworkController()
     control.make_variables()
@@ -132,21 +139,42 @@ def main():
     control.run_models(trial_info['neural_input'])
     loss_baseline = np.mean(control.judge_models(trial_info['desired_output'], trial_info['train_mask']))
 
+    # Records
+    save_record = {
+        'iter'      : [],
+        'task_acc'  : [],
+        'full_acc'  : [],
+        'loss'      : [],
+        'mut_str'   : []
+    }
+
     for i in range(par['iterations']):
 
         trial_info = stim.make_batch()
         control.run_models(trial_info['neural_input'])
         loss = control.judge_models(trial_info['desired_output'], trial_info['train_mask'])
 
-        mutation_strength = par['mutation_strength']*np.mean(loss)/loss_baseline
+        mutation_strength = par['mutation_strength']*np.power(np.mean(loss)/loss_baseline, 1.1)
+        """if np.mean(loss)/loss_baseline < 0.05:
+            mutation_strength = par['mutation_strength']*np.mean(loss)/loss_baseline * (1/4)
+        elif np.mean(loss)/loss_baseline < 0.1:
+            mutation_strength = par['mutation_strength']*np.mean(loss)/loss_baseline * (1/2)"""
         control.update_mutation_constants(mutation_strength, par['mutation_rate'])
         control.breed_models()
 
         if i%par['iters_per_output'] == 0:
-            accuracy = control.get_performance()
-            print('Iter: {:4} | Loss: {:5.3f} | Acc: {:5.3f} | Mut. Str.: {:5.3f}'.format( \
-            i, np.mean(loss[:par['num_survivors']]), np.mean(accuracy[:par['num_survivors']]), \
-            mutation_strength))
+            task_accuracy, full_accuracy = control.get_performance()
+
+            save_record['iter'].append(i)
+            save_record['task_acc'].append(np.mean(task_accuracy[:par['num_survivors']]))
+            save_record['full_acc'].append(np.mean(full_accuracy[:par['num_survivors']]))
+            save_record['loss'].append(np.mean(loss[:par['num_survivors']]))
+            save_record['mut_str'].append(mutation_strength)
+            pickle.dump(save_record, open(par['save_dir']+par['save_fn']+'.pkl', 'wb'))
+
+            print('Iter: {:4} | Loss: {:5.3f} | Task Acc: {:5.3f} | Full Acc: {:5.3f} | Mut. Str.: {:5.3f}'.format( \
+            i, np.mean(loss[:par['num_survivors']]), np.mean(task_accuracy[:par['num_survivors']]), \
+            np.mean(full_accuracy[:par['num_survivors']]), mutation_strength))
 
 
 if __name__ == '__main__':
