@@ -43,9 +43,9 @@ class NetworkController:
 
         input_data = to_gpu(input_data)
 
-        self.h     = cp.zeros([par['num_time_steps'], par['n_networks'], par['batch_size'], par['n_hidden']])
-        self.syn_x = cp.zeros([par['num_time_steps'], par['n_networks'], par['batch_size'], par['n_hidden']])
-        self.syn_u = cp.zeros([par['num_time_steps'], par['n_networks'], par['batch_size'], par['n_hidden']])
+        self.h     = cp.zeros([par['num_time_steps'], par['n_networks'], par['batch_size'], par['n_hidden']], dtype=cp.float16)
+        self.syn_x = cp.zeros([par['num_time_steps'], par['n_networks'], par['batch_size'], par['n_hidden']], dtype=cp.float16)
+        self.syn_u = cp.zeros([par['num_time_steps'], par['n_networks'], par['batch_size'], par['n_hidden']], dtype=cp.float16)
 
         # Put init in last time step, to be overwritten at end of trial
         self.h[-1,:,:,:]        = self.var_dict['h_init']
@@ -92,7 +92,7 @@ class NetworkController:
         eps = 1e-7
 
         self.loss = -cp.mean(self.output_mask[...,cp.newaxis]*softmax(self.y)*cp.log(self.output_data+eps), axis=(0,2,3))
-        self.rank = cp.argsort(self.loss)
+        self.rank = cp.argsort(self.loss.astype(cp.float32))
 
         for name in self.var_dict.keys():
             self.var_dict[name] = self.var_dict[name][self.rank,...]

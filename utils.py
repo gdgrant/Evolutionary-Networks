@@ -18,7 +18,7 @@ def to_gpu(x):
 
 def to_cpu(x):
     """ Move cupy array to CPU """
-    return cp.asnumpy(x)
+    return cp.asnumpy(x.astype(cp.float32))
 
 
 ### Network functions
@@ -47,7 +47,7 @@ def cross(var1, var2, rate):
 def mutate(var, num, rate, scale):
     """ Mutates a given variable by a given rate and scale,
         generating as many offspring as num """
-    mutation_mask = cp.random.random(size=[num, *var.shape], dtype=np.float32)
+    mutation_mask = cp.random.random(size=[num, *var.shape], dtype=np.float32).astype(cp.float16)
     mutation = cp.random.normal(scale=scale, size=[num, *var.shape])
     return var[cp.newaxis,...] + mutation*mutation_mask
 

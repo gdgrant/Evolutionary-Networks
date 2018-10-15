@@ -68,23 +68,23 @@ def update_dependencies():
 
     par['n_input'] = par['num_motion_tuned']*par['num_receptive_fields'] + par['num_fix_tuned'] + par['num_rule_tuned']
 
-    par['h_init_init']  = 0.1*np.ones([par['n_networks'], 1,par['n_hidden']], dtype=np.float32)
-    par['W_in_init']    = np.float32(np.random.gamma(shape=par['input_gamma'], scale=1., size=[par['n_networks'], par['n_input'], par['n_hidden']]))
-    par['W_out_init']   = np.float32(np.random.gamma(shape=par['input_gamma'], scale=1., size=[par['n_networks'], par['n_hidden'], par['n_output']]))
-    par['W_rnn_init']   = np.float32(np.random.gamma(shape=par['rnn_gamma'], scale=1., size=[par['n_networks'], par['n_hidden'], par['n_hidden']]))
+    par['h_init_init']  = 0.1*np.ones([par['n_networks'], 1,par['n_hidden']], dtype=np.float16)
+    par['W_in_init']    = np.float16(np.random.gamma(shape=par['input_gamma'], scale=1., size=[par['n_networks'], par['n_input'], par['n_hidden']]))
+    par['W_out_init']   = np.float16(np.random.gamma(shape=par['input_gamma'], scale=1., size=[par['n_networks'], par['n_hidden'], par['n_output']]))
+    par['W_rnn_init']   = np.float16(np.random.gamma(shape=par['rnn_gamma'], scale=1., size=[par['n_networks'], par['n_hidden'], par['n_hidden']]))
 
-    par['b_rnn_init']   = np.zeros([par['n_networks'], 1, par['n_hidden']], dtype=np.float32)
-    par['b_out_init']   = np.zeros([par['n_networks'], 1, par['n_output']], dtype=np.float32)
+    par['b_rnn_init']   = np.zeros([par['n_networks'], 1, par['n_hidden']], dtype=np.float16)
+    par['b_out_init']   = np.zeros([par['n_networks'], 1, par['n_output']], dtype=np.float16)
 
     par['W_rnn_mask']   = 1 - np.eye(par['n_hidden'])[np.newaxis,:,:]
     par['W_rnn_init']  *= par['W_rnn_mask']
 
-    par['EI_vector']    = np.ones(par['n_hidden'])
+    par['EI_vector']    = np.ones(par['n_hidden'], dtype=np.float16)
     par['EI_vector'][int(par['n_hidden']*par['EI_prop']):] *= -1
     par['EI_mask']      = np.diag(par['EI_vector'])[np.newaxis,:,:]
 
     par['dt_sec']       = par['dt']/1000
-    par['alpha_neuron'] = np.float32(par['dt']/par['membrane_constant'])
+    par['alpha_neuron'] = np.float16(par['dt']/par['membrane_constant'])
     par['noise_rnn']    = np.sqrt(2*par['alpha_neuron'])*par['noise_rnn_sd']
     par['noise_in']     = np.sqrt(2/par['alpha_neuron'])*par['noise_rnn_sd']
 
@@ -92,12 +92,12 @@ def update_dependencies():
 
 
     if par['use_stp']:
-        par['alpha_stf']  = np.ones((1, 1, par['n_hidden']), dtype=np.float32)
-        par['alpha_std']  = np.ones((1, 1, par['n_hidden']), dtype=np.float32)
-        par['U']          = np.ones((1, 1, par['n_hidden']), dtype=np.float32)
+        par['alpha_stf']  = np.ones((1, 1, par['n_hidden']), dtype=np.float16)
+        par['alpha_std']  = np.ones((1, 1, par['n_hidden']), dtype=np.float16)
+        par['U']          = np.ones((1, 1, par['n_hidden']), dtype=np.float16)
 
-        par['syn_x_init'] = np.zeros((1, 1, par['n_hidden']), dtype=np.float32)
-        par['syn_u_init'] = np.zeros((1, 1, par['n_hidden']), dtype=np.float32)
+        par['syn_x_init'] = np.zeros((1, 1, par['n_hidden']), dtype=np.float16)
+        par['syn_u_init'] = np.zeros((1, 1, par['n_hidden']), dtype=np.float16)
 
         for i in range(0,par['n_hidden'],2):
             par['alpha_stf'][0,0,i] = par['dt']/par['tau_slow']
