@@ -2,10 +2,13 @@ from utils import *
 from parameters import par, update_dependencies
 from stimulus import Stimulus
 
+""" This is a comment """
+
 class NetworkController:
 
     def __init__(self):
         pass
+
 
 
     def make_variables(self):
