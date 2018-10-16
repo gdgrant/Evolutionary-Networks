@@ -18,7 +18,10 @@ def to_gpu(x):
 
 def to_cpu(x):
     """ Move cupy array to CPU """
-    return cp.asnumpy(x.astype(cp.float32))
+    if len(sys.argv) > 1:
+        return cp.asnumpy(x.astype(cp.float32))
+    else:
+        return x.astype(cp.float32)
 
 
 ### Network functions
