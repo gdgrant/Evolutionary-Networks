@@ -11,7 +11,7 @@ par = {
     'EI_prop'               : 0.8,
     'iters_per_output'      : 5,
 
-    'n_networks'            : 200,
+    'n_networks'            : 2000,
     'n_hidden'              : 100,
     'n_output'              : 3,
 
@@ -31,6 +31,7 @@ par = {
 
     'dt'                    : 2,
     'membrane_constant'     : 100,
+    'output_constant'       : 200,
 
     'dead_time'             : 100,
     'fix_time'              : 200,
@@ -91,6 +92,7 @@ def update_dependencies():
 
     par['dt_sec']       = par['dt']/1000
     par['alpha_neuron'] = np.float16(par['dt']/par['membrane_constant'])
+    par['beta_neuron']  = np.float16(par['dt']/par['output_constant'])
     par['noise_rnn']    = np.sqrt(2*par['alpha_neuron'])*par['noise_rnn_sd']
     par['noise_in']     = np.sqrt(2/par['alpha_neuron'])*par['noise_rnn_sd']
 

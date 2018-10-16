@@ -21,7 +21,7 @@ class NetworkController:
     def make_constants(self):
         """ Pull constants into GPU """
 
-        constant_names = ['alpha_neuron', 'noise_rnn', 'W_rnn_mask', \
+        constant_names = ['alpha_neuron', 'beta_neuron', 'noise_rnn', 'W_rnn_mask', \
             'mutation_rate', 'mutation_strength', 'cross_rate', 'EI_mask', 'loss_baseline']
         stp_constants = ['syn_x_init', 'syn_u_init', 'U', 'alpha_stf', 'alpha_std', 'dt_sec']
 
@@ -65,8 +65,8 @@ class NetworkController:
         elif par['network_type'] == 'spiking':
             for t in range(par['num_time_steps']):
                 h_out, h, syn_x, syn_u = self.LIF_spiking_recurrent_cell(h_out, h, input_data[t], syn_x, syn_u)
-                self.y[t,...] = (1-self.con_dict['alpha_neuron'])*self.y[t-1,...] \
-                              + self.con_dict['alpha_neuron']*(cp.matmul(h_out, self.var_dict['W_out']) + self.var_dict['b_out'])
+                self.y[t,...] = (1-self.con_dict['beta_neuron'])*self.y[t-1,...] \
+                              + self.con_dict['beta_neuron']*(cp.matmul(h_out, self.var_dict['W_out']) + self.var_dict['b_out'])
 
 
     def recurrent_cell(self, h_out, h, rnn_input, syn_x, syn_u):
