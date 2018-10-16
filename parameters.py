@@ -21,7 +21,7 @@ par = {
     'num_motion_dirs'       : 8,
 
     'batch_size'            : 128,
-    'iterations'            : 2001,
+    'iterations'            : 1001,
 
     'input_gamma'           : 0.2,
     'rnn_gamma'             : 0.025,
@@ -51,6 +51,8 @@ par = {
     'tuning_height'         : 4.0,
     'response_multiplier'   : 4.0,
     'num_rules'             : 1,
+
+    'loss_baseline'         : 10.,
 
 }
 

@@ -21,13 +21,19 @@ class NetworkController:
         """ Pull constants into GPU """
 
         constant_names = ['alpha_neuron', 'noise_rnn', 'W_rnn_mask', \
-            'mutation_rate', 'mutation_strength', 'cross_rate', 'EI_mask']
+            'mutation_rate', 'mutation_strength', 'cross_rate', 'EI_mask', 'loss_baseline']
         stp_constants = ['syn_x_init', 'syn_u_init', 'U', 'alpha_stf', 'alpha_std', 'dt_sec']
 
         constant_names += stp_constants if par['use_stp'] else []
         self.con_dict = {}
         for c in constant_names:
             self.con_dict[c] = to_gpu(par[c])
+
+
+    def update_constant(self, con_name, con):
+        """ Update a given constant in the model """
+
+        self.con_dict[con_name] = to_gpu(con)
 
 
     def update_mutation_constants(self, strength, rate):
@@ -92,6 +98,8 @@ class NetworkController:
         eps = 1e-7
 
         self.loss = -cp.mean(self.output_mask[...,cp.newaxis]*softmax(self.y)*cp.log(self.output_data+eps), axis=(0,2,3))
+        self.loss[cp.where(cp.isnan(self.loss))] = self.con_dict['loss_baseline']
+
         self.rank = cp.argsort(self.loss.astype(cp.float32))
 
         for name in self.var_dict.keys():
@@ -138,6 +146,7 @@ def main():
     trial_info = stim.make_batch()
     control.run_models(trial_info['neural_input'])
     loss_baseline = np.mean(control.judge_models(trial_info['desired_output'], trial_info['train_mask']))
+    control.update_constant('loss_baseline', loss_baseline)
 
     # Records
     save_record = {
