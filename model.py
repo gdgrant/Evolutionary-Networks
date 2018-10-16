@@ -44,6 +44,23 @@ class NetworkController:
 
 
     def run_models(self, input_data):
+        """ Run model based on input data, collecting network outputs into y """
+
+        input_data = to_gpu(input_data)
+
+        self.y = cp.zeros([par['num_time_steps'], par['n_networks'], par['batch_size'], par['n_output']], dtype=cp.float16)
+        h      = self.var_dict['h_init']     * cp.ones([par['n_networks'],par['batch_size'],1], dtype=cp.float16)
+        syn_x  = self.con_dict['syn_x_init'] * cp.ones([par['n_networks'],par['batch_size'],1], dtype=cp.float16)
+        syn_u  = self.con_dict['syn_u_init'] * cp.ones([par['n_networks'],par['batch_size'],1], dtype=cp.float16)
+
+        self.W_rnn_effective = apply_EI(self.var_dict['W_rnn'], self.con_dict['EI_mask'])
+
+        for t in range(par['num_time_steps']):
+            h, syn_x, syn_u = self.recurrent_cell(h, input_data[t], syn_x, syn_u)
+            self.y[t,...] = cp.matmul(h, self.var_dict['W_out']) + self.var_dict['b_out']
+
+
+    def run_and_record_models(self, input_data):
         """ Run model based on input data, collecting
             network states into h and network outputs into y """
 
