@@ -101,7 +101,7 @@ class Stimulus:
             dir = np.random.choice(par['num_motion_dirs'])
             trial_info['neural_input'][par['dead_time']:,t,:par['num_motion_tuned']] += self.motion_tuning[np.newaxis,:,0,dir]
 
-            out = 1 if dir <= 4 else 2
+            out = 1 if dir < 4 else 2
             trial_info['desired_output'][par['dead_time']:,t,out] = 1.
 
         return trial_info
