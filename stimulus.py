@@ -11,12 +11,41 @@ class Stimulus:
 
         if par['task'] == 'dms':
             trial_info = self.dms()
+        elif par['task'] == 'demo':
+            trial_info = self.demo()
         else:
             raise Exception('Task "{}" not yet implemented.'.format(par['task']))
+
+        if par['network_type'] == 'spiking':
+            trial_info = self.make_spiking(trial_info)
 
         trial_info['neural_input']   = trial_info['neural_input'][:,np.newaxis,...]
         trial_info['desired_output'] = trial_info['desired_output'][:,np.newaxis,...]
         trial_info['train_mask']     = trial_info['train_mask'][:,np.newaxis,...]
+
+        return trial_info
+
+
+    def make_spiking(self, trial_info):
+
+        do_plots = False
+
+        if do_plots:
+            import matplotlib.pyplot as plt
+            fig, ax = plt.subplots(2,3)
+            ax[0,0].imshow(trial_info['neural_input'][:,0,:].astype(np.float32), aspect='auto', clim=[0,par['tuning_height']])
+            ax[0,1].imshow(trial_info['desired_output'][:,0,:].astype(np.float32), aspect='auto', clim=[0,par['tuning_height']])
+            ax[0,2].imshow(trial_info['train_mask'][:,0,np.newaxis].astype(np.float32), aspect='auto', clim=[0,par['tuning_height']])
+
+        trial_info['neural_input'] = np.where(trial_info['neural_input']/1000*par['dt'] > np.random.rand(*trial_info['neural_input'].shape), \
+            np.ones_like(trial_info['neural_input']), np.zeros_like(trial_info['neural_input']))
+
+        if do_plots:
+            ax[1,0].imshow(trial_info['neural_input'][:,0,:].astype(np.float32), aspect='auto', clim=[0,1])
+            ax[1,1].imshow(trial_info['desired_output'][:,0,:].astype(np.float32), aspect='auto', clim=[0,par['tuning_height']])
+            ax[1,2].imshow(trial_info['train_mask'][:,0,np.newaxis].astype(np.float32), aspect='auto', clim=[0,par['tuning_height']])
+            plt.show()
+            quit()
 
         return trial_info
 
@@ -58,6 +87,27 @@ class Stimulus:
         return trial_info
 
 
+    def demo(self):
+
+        trial_info = {
+            'neural_input'      : np.random.normal(0., par['noise_in'], size=[par['num_time_steps'], par['batch_size'], par['n_input']]),
+            'desired_output'    : np.zeros([par['num_time_steps'], par['batch_size'], par['n_output']], dtype=np.float16),
+            'train_mask'        : np.ones([par['num_time_steps'], par['batch_size']], dtype=np.float16)
+        }
+
+        trial_info['train_mask'][:par['dead_time'],...] = 0.
+
+        for t in range(par['batch_size']):
+            dir = np.random.choice(par['num_motion_dirs'])
+            trial_info['neural_input'][par['dead_time']:,t,:par['num_motion_tuned']] += self.motion_tuning[np.newaxis,:,0,dir]
+
+            out = 1 if dir <= 4 else 2
+            trial_info['desired_output'][par['dead_time']:,t,out] = 1.
+
+        return trial_info
+
+
+
     def create_tuning_functions(self):
 
         """
@@ -93,3 +143,7 @@ class Stimulus:
 
 
         return motion_tuning, fix_tuning, rule_tuning
+
+if __name__ == '__main__':
+    s = Stimulus()
+    s.make_batch()

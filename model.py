@@ -12,6 +12,7 @@ class NetworkController:
         """ Pull variables into GPU """
 
         var_names = ['W_in', 'W_out', 'W_rnn', 'b_rnn', 'b_out', 'h_init']
+        var_names += ['threshold', 'reset'] if par['network_type']=='spiking' else []
         self.var_dict = {}
         for v in var_names:
             self.var_dict[v] = to_gpu(par[v+'_init'])
@@ -49,43 +50,26 @@ class NetworkController:
         input_data = to_gpu(input_data)
 
         self.y = cp.zeros([par['num_time_steps'], par['n_networks'], par['batch_size'], par['n_output']], dtype=cp.float16)
-        h      = self.var_dict['h_init']     * cp.ones([par['n_networks'],par['batch_size'],1], dtype=cp.float16)
         syn_x  = self.con_dict['syn_x_init'] * cp.ones([par['n_networks'],par['batch_size'],1], dtype=cp.float16)
         syn_u  = self.con_dict['syn_u_init'] * cp.ones([par['n_networks'],par['batch_size'],1], dtype=cp.float16)
+        h      = self.var_dict['h_init']     * cp.ones([par['n_networks'],par['batch_size'],1], dtype=cp.float16)
+        h_out  = cp.zeros([par['n_networks'],par['batch_size'],1], dtype=cp.float16)
 
         self.W_rnn_effective = apply_EI(self.var_dict['W_rnn'], self.con_dict['EI_mask'])
 
-        for t in range(par['num_time_steps']):
-            h, syn_x, syn_u = self.recurrent_cell(h, input_data[t], syn_x, syn_u)
-            self.y[t,...] = cp.matmul(h, self.var_dict['W_out']) + self.var_dict['b_out']
+        if par['network_type'] == 'rate_based':
+            for t in range(par['num_time_steps']):
+                _, h, syn_x, syn_u = self.recurrent_cell(None, h, input_data[t], syn_x, syn_u)
+                self.y[t,...] = cp.matmul(h, self.var_dict['W_out']) + self.var_dict['b_out']
+
+        elif par['network_type'] == 'spiking':
+            for t in range(par['num_time_steps']):
+                h_out, h, syn_x, syn_u = self.LIF_spiking_recurrent_cell(h_out, h, input_data[t], syn_x, syn_u)
+                self.y[t,...] = (1-self.con_dict['alpha_neuron'])*self.y[t-1,...] \
+                              + self.con_dict['alpha_neuron']*(cp.matmul(h_out, self.var_dict['W_out']) + self.var_dict['b_out'])
 
 
-    def run_and_record_models(self, input_data):
-        """ Run model based on input data, collecting
-            network states into h and network outputs into y """
-
-        input_data = to_gpu(input_data)
-
-        self.h     = cp.zeros([par['num_time_steps'], par['n_networks'], par['batch_size'], par['n_hidden']], dtype=cp.float16)
-        self.syn_x = cp.zeros([par['num_time_steps'], par['n_networks'], par['batch_size'], par['n_hidden']], dtype=cp.float16)
-        self.syn_u = cp.zeros([par['num_time_steps'], par['n_networks'], par['batch_size'], par['n_hidden']], dtype=cp.float16)
-
-        # Put init in last time step, to be overwritten at end of trial
-        self.h[-1,:,:,:]        = self.var_dict['h_init']
-        self.syn_x[-1,:,:,:]    = self.con_dict['syn_x_init']
-        self.syn_u[-1,:,:,:]    = self.con_dict['syn_u_init']
-
-        self.W_rnn_effective = apply_EI(self.var_dict['W_rnn'], self.con_dict['EI_mask'])
-
-        # input_data = [time, networks, trials, neurons]
-        for t in range(par['num_time_steps']):
-            self.h[t,:,:,:], self.syn_x[t,:,:,:], self.syn_u[t,:,:,:] = \
-                self.recurrent_cell(self.h[t-1,:,:,:], input_data[t,:,:,:], self.syn_x[t-1,:,:,:], self.syn_u[t-1,:,:,:])
-
-        self.y = cp.matmul(self.h, self.var_dict['W_out']) + self.var_dict['b_out']
-
-
-    def recurrent_cell(self, h, rnn_input, syn_x, syn_u):
+    def recurrent_cell(self, h_out, h, rnn_input, syn_x, syn_u):
         """ Process one time step of the hidden layer
             based on the previous state and the current input """
 
@@ -103,7 +87,32 @@ class NetworkController:
             + cp.matmul(h_post, self.W_rnn_effective) + self.var_dict['b_rnn']) + \
             + cp.random.normal(scale=self.con_dict['noise_rnn'], size=h.shape))
 
-        return h, syn_x, syn_u
+        return None, h, syn_x, syn_u
+
+
+    def LIF_spiking_recurrent_cell(self, h_out, h, rnn_input, syn_x, syn_u):
+        """ Process one time step of the hidden layer
+            based on the previous state and the current input,
+            using leaky integrate-and-fire spiking """
+
+        if par['use_stp']:
+            syn_x += self.con_dict['alpha_std']*(1-syn_x) - self.con_dict['dt_sec']*syn_u*syn_x*h_out
+            syn_u += self.con_dict['alpha_stf']*(self.con_dict['U']-syn_x) - self.con_dict['dt_sec']*self.con_dict['U']*(1-syn_u)*h_out
+            syn_x = cp.minimum(1., relu(syn_x))
+            syn_u = cp.minimum(1., relu(syn_u))
+            h_post = syn_u*syn_x*h
+        else:
+            h_post = h_out
+
+        h = (1-self.con_dict['alpha_neuron'])*h \
+            + self.con_dict['alpha_neuron']*(cp.matmul(rnn_input, self.var_dict['W_in']) \
+            + cp.matmul(h_post, self.W_rnn_effective) + self.var_dict['b_rnn']) + \
+            + cp.random.normal(scale=self.con_dict['noise_rnn'], size=h.shape)
+
+        h_out = cp.where(h > self.var_dict['threshold'], cp.ones_like(h_out), cp.zeros_like(h_out))
+        h     = (1 - h_out)*h + h_out*self.var_dict['reset']
+
+        return h_out, h, syn_x, syn_u
 
 
     def judge_models(self, output_data, output_mask):

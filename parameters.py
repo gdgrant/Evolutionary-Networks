@@ -5,13 +5,14 @@ global par
 par = {
 
     'save_dir'              : './savedir/',
-    'save_fn'               : 'testing',
+    'save_fn'               : 'testing_spiking',
+    'network_type'          : 'spiking',
     'use_stp'               : True,
     'EI_prop'               : 0.8,
     'iters_per_output'      : 5,
 
     'n_networks'            : 200,
-    'n_hidden'              : 240,
+    'n_hidden'              : 100,
     'n_output'              : 3,
 
     'num_motion_tuned'      : 24,
@@ -28,7 +29,7 @@ par = {
     'noise_rnn_sd'          : 0.05,
     'noise_in_sd'           : 0.05,
 
-    'dt'                    : 20,
+    'dt'                    : 2,
     'membrane_constant'     : 100,
 
     'dead_time'             : 100,
@@ -43,12 +44,12 @@ par = {
 
     'survival_rate'         : 0.10,
     'mutation_rate'         : 0.25,
-    'mutation_strength'     : 1.00,
+    'mutation_strength'     : 0.125,
     'cross_rate'            : 0.25,
 
-    'task'                  : 'dms',
+    'task'                  : 'demo',
     'kappa'                 : 2.0,
-    'tuning_height'         : 4.0,
+    'tuning_height'         : 40.0,
     'response_multiplier'   : 4.0,
     'num_rules'             : 1,
 
@@ -70,7 +71,7 @@ def update_dependencies():
 
     par['n_input'] = par['num_motion_tuned']*par['num_receptive_fields'] + par['num_fix_tuned'] + par['num_rule_tuned']
 
-    par['h_init_init']  = 0.1*np.ones([par['n_networks'], 1,par['n_hidden']], dtype=np.float16)
+    par['h_init_init']  = 0.1*np.ones([par['n_networks'],1,par['n_hidden']], dtype=np.float16)
     par['W_in_init']    = np.float16(np.random.gamma(shape=par['input_gamma'], scale=1., size=[par['n_networks'], par['n_input'], par['n_hidden']]))
     par['W_out_init']   = np.float16(np.random.gamma(shape=par['input_gamma'], scale=1., size=[par['n_networks'], par['n_hidden'], par['n_output']]))
     par['W_rnn_init']   = np.float16(np.random.gamma(shape=par['rnn_gamma'], scale=1., size=[par['n_networks'], par['n_hidden'], par['n_hidden']]))
@@ -84,6 +85,9 @@ def update_dependencies():
     par['EI_vector']    = np.ones(par['n_hidden'], dtype=np.float16)
     par['EI_vector'][int(par['n_hidden']*par['EI_prop']):] *= -1
     par['EI_mask']      = np.diag(par['EI_vector'])[np.newaxis,:,:]
+
+    par['threshold_init'] = 0.5*np.ones([par['n_networks'],1,par['n_hidden']], dtype=np.float16)
+    par['reset_init']     = np.zeros([par['n_networks'],1,par['n_hidden']], dtype=np.float16)
 
     par['dt_sec']       = par['dt']/1000
     par['alpha_neuron'] = np.float16(par['dt']/par['membrane_constant'])
