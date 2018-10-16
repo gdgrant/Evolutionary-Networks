@@ -10,8 +10,8 @@ par = {
     'EI_prop'               : 0.8,
     'iters_per_output'      : 5,
 
-    'n_networks'            : 200,
-    'n_hidden'              : 240,
+    'n_networks'            : 2000,
+    'n_hidden'              : 100,
     'n_output'              : 3,
 
     'num_motion_tuned'      : 24,
