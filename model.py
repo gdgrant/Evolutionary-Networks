@@ -243,18 +243,6 @@ def main():
 
             h_out = np.mean(h_out[:par['num_survivors']])*par['dt']*1000
 
-            """end_dead_time       = par['dead_time']//par['dt']
-            end_fix_time        = end_dead_time   + par['fix_time']//par['dt']
-            end_sample_time     = end_fix_time    + par['sample_time']//par['dt']
-            end_delay_time      = end_sample_time + par['delay_time']//par['dt']
-            end_mask_time       = end_delay_time  + par['mask_time']//par['dt']
-            end_test_time       = end_delay_time  + par['test_time']//par['dt']
-
-            h_out_pre = np.mean(h_out[:end_fix_time,:])*par['dt']*1000
-            h_out_fix = np.mean(h_out[end_dead_time:end_fix_time,:])*par['dt']*1000
-            h_out_show = np.mean(h_out[end_fix_time:end_delay_time,:])*par['dt']*1000
-            h_out_resp = np.mean(h_out[end_delay_time:end_test_time,:])*par['dt']*1000"""
-
             names = ['Iter', 'Loss', 'Task Acc', 'Full Acc', 'Mut. Str.', 'Spike Rate']
             elements = [i, np.mean(loss[:par['num_survivors']]), np.mean(task_accuracy[:par['num_survivors']]), \
                 np.mean(full_accuracy[:par['num_survivors']]), mutation_strength, h_out]
@@ -268,12 +256,6 @@ def main():
                     status_string += '{}: {:5.3f} | '.format(n, e)
 
             print(status_string)
-            """print('Iter: {:4} | Loss: {:5.3f} | Task Acc: {:5.3f} | Full Acc: {:5.3f} | Mut. Str.: {:5.3f}'.format( \
-                i, np.mean(loss[:par['num_survivors']]), np.mean(task_accuracy[:par['num_survivors']]), \
-                np.mean(full_accuracy[:par['num_survivors']]), mutation_strength))
-            print('Mean Spike Rate: {:5.2f} Hz'.format(h_out))"""
-            #print('Dead Time: {:5.2f} | Fixation: {:5.2f} | Stimulus: {:5.2f} | Response: {:5.2f}'.format(h_out_pre, h_out_fix, h_out_show, h_out_resp))
-
 
 if __name__ == '__main__':
     main()
