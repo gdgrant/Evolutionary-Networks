@@ -31,7 +31,7 @@ par = {
 
     'dt'                    : 1,
     'membrane_constant'     : 20,
-    'output_constant'       : 200,
+    'output_constant'       : 40,
 
     'dead_time'             : 100,
     'fix_time'              : 200,

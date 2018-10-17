@@ -66,10 +66,14 @@ class NetworkController:
             h_out_save = cp.zeros([par['n_networks']])
             for t in range(par['num_time_steps']):
                 h_out, h, syn_x, syn_u = self.LIF_spiking_recurrent_cell(h_out, h, input_data[t], syn_x, syn_u)
+
                 self.y[t,...] = (1-self.con_dict['beta_neuron'])*self.y[t-1,...] \
-                              + cp.matmul(h_out, self.var_dict['W_out']) + self.var_dict['b_out']
-                h_out_save += cp.mean(h_out, axis=(1,2))
-            self.h_out_mean = h_out_save*self.con_dict['dt']*1000
+                              + self.con_dict['beta_neuron']*cp.matmul(h_out, self.var_dict['W_out']) + self.var_dict['b_out']
+
+                self.y[t,...] = cp.minimum(relu(self.y[t,...]), 5)
+
+                h_out_save += cp.mean(h_out, axis=(1,2))/par['num_time_steps']
+            self.h_out_mean = h_out_save*1000/self.con_dict['dt']
 
         return to_cpu(h_out_save)
 
@@ -129,7 +133,7 @@ class NetworkController:
 
         self.loss = cross_entropy(self.output_mask, self.output_data, self.y)
 
-        self.freq_loss = 1e-4*cp.square(self.h_out_mean-20)
+        self.freq_loss = 1e-3*cp.square(self.h_out_mean-20)
         self.loss += self.freq_loss
 
         self.loss[cp.where(cp.isnan(self.loss))] = self.con_dict['loss_baseline']
