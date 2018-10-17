@@ -51,7 +51,7 @@ par = {
     'task'                  : 'oic',
     'kappa'                 : 2.0,
     'tuning_height'         : 20.0,
-    'response_multiplier'   : 4.0,
+    'response_multiplier'   : 10.0,
     'num_rules'             : 1,
 
     'loss_baseline'         : 10.,

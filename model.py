@@ -72,8 +72,8 @@ class NetworkController:
 
                 self.y[t,...] = cp.minimum(relu(self.y[t,...]), 5)
 
-                h_out_save += cp.mean(h_out, axis=(1,2))/par['num_time_steps']
-            self.h_out_mean = h_out_save*1000/self.con_dict['dt']
+                h_out_save += cp.mean(h_out, axis=(1,2))
+            self.h_out_mean = h_out_save*1000/self.con_dict['dt']/par['num_time_steps']
 
         return to_cpu(h_out_save)
 
@@ -133,7 +133,7 @@ class NetworkController:
 
         self.loss = cross_entropy(self.output_mask, self.output_data, self.y)
 
-        self.freq_loss = 1e-3*cp.square(self.h_out_mean-20)
+        self.freq_loss = 1e-2*cp.square(self.h_out_mean-20)
         self.loss += self.freq_loss
 
         self.loss[cp.where(cp.isnan(self.loss))] = self.con_dict['loss_baseline']
