@@ -145,6 +145,24 @@ class NetworkController:
         return to_cpu(self.loss[self.rank])
 
 
+    def judge_models_cpu(self, output_data, output_mask):
+        """ Determine the loss and accuracy of each model,
+            and rank them accordingly, using cpu """
+
+        self.loss = cross_entropy_cpu(output_mask, output_data, to_cpu(self.y))
+
+        self.freq_loss = 1e-4*np.square(self.h_out_mean-20)
+        self.loss += self.freq_loss
+
+        self.loss[np.where(np.isnan(self.loss))] = self.con_dict['loss_baseline']
+        self.rank = np.argsort(self.loss)
+
+        for name in self.var_dict.keys():
+            self.var_dict[name] = self.var_dict[name][self.rank,...]
+
+        return self.loss
+
+
     def get_performance(self):
         """ Only output accuracy when requested """
 
