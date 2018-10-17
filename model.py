@@ -25,8 +25,10 @@ class NetworkController:
         constant_names = ['alpha_neuron', 'noise_rnn', 'W_rnn_mask', \
             'mutation_rate', 'mutation_strength', 'cross_rate', 'EI_mask', 'loss_baseline']
         stp_constants = ['syn_x_init', 'syn_u_init', 'U', 'alpha_stf', 'alpha_std', 'dt_sec']
+        latency_constants = ['max_latency','latency_matrix']
 
         constant_names += stp_constants if par['use_stp'] else []
+        constant_names += latency_constants if par['use_latency'] else []
         self.con_dict = {}
         for c in constant_names:
             self.con_dict[c] = to_gpu(par[c])
@@ -55,6 +57,7 @@ class NetworkController:
         syn_u  = self.con_dict['syn_u_init'] * cp.ones([par['n_networks'],par['batch_size'],1], dtype=cp.float16)
         h      = self.var_dict['h_init']     * cp.ones([par['n_networks'],par['batch_size'],1], dtype=cp.float16)
         h_out  = cp.zeros([par['n_networks'],par['batch_size'],1], dtype=cp.float16)
+        latency = cp.zeros([par['max_latency'], par['n_networks'], par['batch_size'], par['n_hidden']], dtype=cp.float16)
 
         self.W_rnn_effective = apply_EI(self.var_dict['W_rnn'], self.con_dict['EI_mask'])
 
@@ -65,7 +68,7 @@ class NetworkController:
 
         elif par['network_type'] == 'spiking':
             for t in range(par['num_time_steps']):
-                h_out, h, syn_x, syn_u = self.LIF_spiking_recurrent_cell(h_out, h, input_data[t], syn_x, syn_u)
+                h_out, h, syn_x, syn_u = self.LIF_spiking_recurrent_cell(h_out, h, input_data[t], syn_x, syn_u, latency, t)
                 self.y[t,...] = (1-self.con_dict['alpha_neuron'])*self.y[t-1,...] \
                               + self.con_dict['alpha_neuron']*(cp.matmul(h_out, self.var_dict['W_out']) + self.var_dict['b_out'])
 
@@ -88,10 +91,12 @@ class NetworkController:
             + cp.matmul(h_post, self.W_rnn_effective) + self.var_dict['b_rnn']) + \
             + cp.random.normal(scale=self.con_dict['noise_rnn'], size=h.shape))
 
+
+
         return None, h, syn_x, syn_u
 
 
-    def LIF_spiking_recurrent_cell(self, h_out, h, rnn_input, syn_x, syn_u):
+    def LIF_spiking_recurrent_cell(self, h_out, h, rnn_input, syn_x, syn_u, latency, t):
         """ Process one time step of the hidden layer
             based on the previous state and the current input,
             using leaky integrate-and-fire spiking """
@@ -104,6 +109,9 @@ class NetworkController:
             h_post = syn_u*syn_x*h
         else:
             h_post = h_out
+
+        h_post += latency[t%self.con_dict['max_latency']]
+        latency += h_post * self.con_dict['max_latency']
 
         h = (1-self.con_dict['alpha_neuron'])*h \
             + self.con_dict['alpha_neuron']*(cp.matmul(rnn_input, self.var_dict['W_in']) \

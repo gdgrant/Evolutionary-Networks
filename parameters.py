@@ -1,4 +1,5 @@
 import numpy as np
+from scipy.stats import gamma
 print('\n--> Loading parameters...')
 
 global par
@@ -8,11 +9,12 @@ par = {
     'save_fn'               : 'testing_spiking',
     'network_type'          : 'spiking',
     'use_stp'               : True,
+    'use_latency'           : True,
     'EI_prop'               : 0.8,
     'iters_per_output'      : 5,
 
-    'n_networks'            : 200,
-    'n_hidden'              : 100,
+    'n_networks'            : 20,
+    'n_hidden'              : 10,
     'n_output'              : 3,
 
     'num_motion_tuned'      : 24,
@@ -29,8 +31,10 @@ par = {
     'noise_rnn_sd'          : 0.05,
     'noise_in_sd'           : 0.05,
 
-    'dt'                    : 2,
+    'dt'                    : 20,
     'membrane_constant'     : 100,
+    'max_latency'           : 40,
+    'latency_gamma'         : 7.5,
 
     'dead_time'             : 100,
     'fix_time'              : 200,
@@ -117,6 +121,11 @@ def update_dependencies():
             par['U'][0,0,i+1] = 0.45
             par['syn_x_init'][0,0,i+1] = 1
             par['syn_u_init'][0,0,i+1] = par['U'][0,0,i+1]
+
+    if par['use_latency']:
+        # TODO: use better truncation method for the distribution
+        par['latency_matrix'] = np.int8(np.random.gamma(shape=par['latency_gamma'], scale=1., size=[par['n_hidden'], par['n_hidden']]))
+        par['latency_matrix'] %= par['max_latency']
 
 
 update_dependencies()
