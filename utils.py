@@ -70,9 +70,16 @@ def mutate(var, num, rate, scale):
 
 ### Reporting functions
 
-def accuracy(output, target, mask, inc_fix=True):
+def accuracy(output, target, mask, inc_fix=False):
     """ Calculate accuracy from output, target, and mask for the networks """
+    output = output.astype(cp.float32)
+    target = target.astype(cp.float32)
+    mask   = mask.astype(cp.float32)
+
     arg_output = cp.argmax(output, -1)
     arg_target = cp.argmax(target, -1)
-    mask = mask * (arg_target != 0) if inc_fix else mask
-    return cp.sum(mask * (arg_output == arg_target), axis=(0,2))/cp.sum(mask, axis=(0,2))
+    mask = mask if inc_fix else mask * (arg_target != 0)
+
+    acc = cp.sum(mask * (arg_output == arg_target), axis=(0,2))/cp.sum(mask, axis=(0,2))
+
+    return acc.astype(cp.float16)

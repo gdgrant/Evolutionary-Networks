@@ -138,15 +138,16 @@ class NetworkController:
         for name in self.var_dict.keys():
             self.var_dict[name] = self.var_dict[name][self.rank,...]
 
-        return to_cpu(self.loss)
+        return to_cpu(self.loss[self.rank])
 
 
     def get_performance(self):
         """ Only output accuracy when requested """
 
         self.task_accuracy = accuracy(self.y, self.output_data, self.output_mask)
-        self.full_accuracy = accuracy(self.y, self.output_data, self.output_mask, inc_fix=False)
-        return to_cpu(self.task_accuracy), to_cpu(self.full_accuracy)
+        self.full_accuracy = accuracy(self.y, self.output_data, self.output_mask, inc_fix=True)
+
+        return to_cpu(self.task_accuracy[self.rank]), to_cpu(self.full_accuracy[self.rank])
 
 
     def breed_models(self):
