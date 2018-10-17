@@ -120,12 +120,12 @@ class NetworkController:
             + cp.random.normal(scale=self.con_dict['noise_rnn'], size=h.shape)
 
         if par['use_latency']:
-            ind = cp.ones([par['n_hidden'], 1]).astype(cp.int8)
-            modded = (ind+self.con_dict['latency_matrix'])%par['max_latency']
+            ind = np.ones([par['n_hidden'],1]) * t
+            modded = ((ind+self.con_dict['latency_matrix'])%par['max_latency']).astype(cp.int8)
 
             for i in range(par['n_hidden']):
                 for j in range(par['n_hidden']):
-                    h_latency[modded[i,j],:,:,j] += h[:,:,i]
+                    h_latency[modded[:,i,j],:,:,j] += h[:,:,i]
 
             # h_latency[self.con_dict['latency_matrix']] += h
             h = h_latency[t%self.con_dict['max_latency']]
