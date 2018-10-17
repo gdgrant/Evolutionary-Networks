@@ -13,8 +13,8 @@ par = {
     'EI_prop'               : 0.8,
     'iters_per_output'      : 5,
 
-    'n_networks'            : 20,
-    'n_hidden'              : 10,
+    'n_networks'            : 100,
+    'n_hidden'              : 100,
     'n_output'              : 3,
 
     'num_motion_tuned'      : 24,
@@ -31,7 +31,7 @@ par = {
     'noise_rnn_sd'          : 0.05,
     'noise_in_sd'           : 0.05,
 
-    'dt'                    : 20,
+    'dt'                    : 2,
     'membrane_constant'     : 100,
     'max_latency'           : 40,
     'latency_gamma'         : 7.5,
@@ -124,7 +124,7 @@ def update_dependencies():
 
     if par['use_latency']:
         # TODO: use better truncation method for the distribution
-        par['latency_matrix'] = np.int8(np.random.gamma(shape=par['latency_gamma'], scale=1., size=[par['n_hidden'], par['n_hidden']]))
+        par['latency_matrix'] = np.int8(np.random.gamma(shape=par['latency_gamma'], scale=1., size=[par['n_networks'], par['n_hidden'], par['n_hidden']]))
         par['latency_matrix'] %= par['max_latency']
 
 

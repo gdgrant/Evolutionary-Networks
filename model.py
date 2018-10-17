@@ -57,7 +57,7 @@ class NetworkController:
         syn_u  = self.con_dict['syn_u_init'] * cp.ones([par['n_networks'],par['batch_size'],1], dtype=cp.float16)
         h      = self.var_dict['h_init']     * cp.ones([par['n_networks'],par['batch_size'],1], dtype=cp.float16)
         h_out  = cp.zeros([par['n_networks'],par['batch_size'],1], dtype=cp.float16)
-        latency = cp.zeros([par['max_latency'], par['n_networks'], par['batch_size'], par['n_hidden']], dtype=cp.float16)
+        h_latency = cp.zeros([par['max_latency'], par['n_networks'], par['batch_size'], par['n_hidden']], dtype=cp.float16)
 
         self.W_rnn_effective = apply_EI(self.var_dict['W_rnn'], self.con_dict['EI_mask'])
 
@@ -68,7 +68,7 @@ class NetworkController:
 
         elif par['network_type'] == 'spiking':
             for t in range(par['num_time_steps']):
-                h_out, h, syn_x, syn_u = self.LIF_spiking_recurrent_cell(h_out, h, input_data[t], syn_x, syn_u, latency, t)
+                h_out, h, syn_x, syn_u = self.LIF_spiking_recurrent_cell(h_out, h, input_data[t], syn_x, syn_u, h_latency, t)
                 self.y[t,...] = (1-self.con_dict['alpha_neuron'])*self.y[t-1,...] \
                               + self.con_dict['alpha_neuron']*(cp.matmul(h_out, self.var_dict['W_out']) + self.var_dict['b_out'])
 
@@ -96,7 +96,7 @@ class NetworkController:
         return None, h, syn_x, syn_u
 
 
-    def LIF_spiking_recurrent_cell(self, h_out, h, rnn_input, syn_x, syn_u, latency, t):
+    def LIF_spiking_recurrent_cell(self, h_out, h, rnn_input, syn_x, syn_u, h_latency, t):
         """ Process one time step of the hidden layer
             based on the previous state and the current input,
             using leaky integrate-and-fire spiking """
@@ -110,13 +110,25 @@ class NetworkController:
         else:
             h_post = h_out
 
-        h_post += latency[t%self.con_dict['max_latency']]
-        latency += h_post * self.con_dict['max_latency']
+        # h_post: [par['n_networks'], par['batch_size'], par['n_hidden']]
+        # latency_matrix: [par['n_networks'], par['n_hidden'], par['n_hidden']]
+        # h_latency: [par['max_latency'], par['n_networks'], par['batch_size'], par['n_hidden']]
 
         h = (1-self.con_dict['alpha_neuron'])*h \
             + self.con_dict['alpha_neuron']*(cp.matmul(rnn_input, self.var_dict['W_in']) \
             + cp.matmul(h_post, self.W_rnn_effective) + self.var_dict['b_rnn']) + \
             + cp.random.normal(scale=self.con_dict['noise_rnn'], size=h.shape)
+
+        if par['use_latency']:
+            ind = np.ones([par['n_hidden'], 1]).astype(np.int8)
+            modded = (ind+self.con_dict['latency_matrix'])%par['max_latency']
+
+            for i in range(par['n_hidden']):
+                for j in range(par['n_hidden']):
+                    h_latency[modded[i,j],:,:,j] += h[:,:,i]
+
+            # h_latency[self.con_dict['latency_matrix']] += h
+            h = h_latency[t%self.con_dict['max_latency']]
 
         h_out = cp.where(h > self.var_dict['threshold'], cp.ones_like(h_out), cp.zeros_like(h_out))
         h     = (1 - h_out)*h + h_out*self.var_dict['reset']
