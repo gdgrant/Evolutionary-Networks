@@ -110,9 +110,6 @@ class NetworkController:
         else:
             h_post = h_out
 
-        # h_post: [par['n_networks'], par['batch_size'], par['n_hidden']]
-        # latency_matrix: [par['n_networks'], par['n_hidden'], par['n_hidden']]
-        # h_latency: [par['max_latency'], par['n_networks'], par['batch_size'], par['n_hidden']]
 
         h = (1-self.con_dict['alpha_neuron'])*h \
             + self.con_dict['alpha_neuron']*(cp.matmul(rnn_input, self.var_dict['W_in']) \
@@ -120,15 +117,18 @@ class NetworkController:
             + cp.random.normal(scale=self.con_dict['noise_rnn'], size=h.shape)
 
         if par['use_latency']:
+            # Modded indicates which index to store hidden activity to in the h_latency matrix
             ind = cp.ones([par['n_hidden'],1]) * t
             modded = ((ind+self.con_dict['latency_matrix'])%self.con_dict['max_latency']).astype(cp.int8)
 
+            # Determine hidden activity across time based on the latency information
             for i in range(par['n_hidden']):
                 for j in range(par['n_hidden']):
                     h_latency[modded[:,i,j],:,:,j] += h[:,:,i]
 
-            # h_latency[self.con_dict['latency_matrix']] += h
+            # get new hidden activity by indexing into h_latency and set h_latency at this timepoint to 0
             h = h_latency[t%self.con_dict['max_latency']]
+            h_latency[t%self.con_dict['max_latency']] = 0
 
         h_out = cp.where(h > self.var_dict['threshold'], cp.ones_like(h_out), cp.zeros_like(h_out))
         h     = (1 - h_out)*h + h_out*self.var_dict['reset']
