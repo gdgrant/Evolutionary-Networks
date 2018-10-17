@@ -45,7 +45,7 @@ def apply_EI(var, ei):
 
 def cross_entropy(mask, target, output, eps=1e-7):
     """ Calculate the cross entropy loss for a rate-based network """
-    return -cp.mean(mask[...,cp.newaxis]*softmax(output)*cp.log(target+eps), axis=(0,2,3))
+    return -cp.mean(mask[...,cp.newaxis]*target*cp.log(softmax(output)+eps), axis=(0,2,3))
 
 
 def spiking_cross_entropy(mask, target, output, eps=1e-7):
