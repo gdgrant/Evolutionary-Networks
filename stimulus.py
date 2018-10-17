@@ -11,8 +11,8 @@ class Stimulus:
 
         if par['task'] == 'dms':
             trial_info = self.dms()
-        elif par['task'] == 'demo':
-            trial_info = self.demo()
+        elif par['task'] == 'oic':
+            trial_info = self.oic()
         else:
             raise Exception('Task "{}" not yet implemented.'.format(par['task']))
 
@@ -34,16 +34,16 @@ class Stimulus:
             import matplotlib.pyplot as plt
             fig, ax = plt.subplots(2,3)
             ax[0,0].imshow(trial_info['neural_input'][:,0,:].astype(np.float32), aspect='auto', clim=[0,par['tuning_height']])
-            ax[0,1].imshow(trial_info['desired_output'][:,0,:].astype(np.float32), aspect='auto', clim=[0,par['tuning_height']])
-            ax[0,2].imshow(trial_info['train_mask'][:,0,np.newaxis].astype(np.float32), aspect='auto', clim=[0,par['tuning_height']])
+            ax[0,1].imshow(trial_info['desired_output'][:,0,:].astype(np.float32), aspect='auto', clim=[0,1])
+            ax[0,2].imshow(trial_info['train_mask'][:,0,np.newaxis].astype(np.float32), aspect='auto', clim=[0,1])
 
         trial_info['neural_input'] = np.where(trial_info['neural_input']/1000*par['dt'] > np.random.rand(*trial_info['neural_input'].shape), \
             np.ones_like(trial_info['neural_input']), np.zeros_like(trial_info['neural_input']))
 
         if do_plots:
             ax[1,0].imshow(trial_info['neural_input'][:,0,:].astype(np.float32), aspect='auto', clim=[0,1])
-            ax[1,1].imshow(trial_info['desired_output'][:,0,:].astype(np.float32), aspect='auto', clim=[0,par['tuning_height']])
-            ax[1,2].imshow(trial_info['train_mask'][:,0,np.newaxis].astype(np.float32), aspect='auto', clim=[0,par['tuning_height']])
+            ax[1,1].imshow(trial_info['desired_output'][:,0,:].astype(np.float32), aspect='auto', clim=[0,1])
+            ax[1,2].imshow(trial_info['train_mask'][:,0,np.newaxis].astype(np.float32), aspect='auto', clim=[0,1])
             plt.show()
             quit()
 
@@ -87,22 +87,35 @@ class Stimulus:
         return trial_info
 
 
-    def demo(self):
+    def oic(self):
 
         trial_info = {
-            'neural_input'      : np.random.normal(0., par['noise_in'], size=[par['num_time_steps'], par['batch_size'], par['n_input']]),
+            'neural_input'      : 5*np.random.normal(0., par['noise_in'], size=[par['num_time_steps'], par['batch_size'], par['n_input']])+2,
             'desired_output'    : np.zeros([par['num_time_steps'], par['batch_size'], par['n_output']], dtype=np.float16),
             'train_mask'        : np.ones([par['num_time_steps'], par['batch_size']], dtype=np.float16)
         }
 
-        trial_info['train_mask'][:par['dead_time'],...] = 0.
+        end_dead_time       = par['dead_time']//par['dt']
+        end_fix_time        = end_dead_time + par['fix_time']//par['dt']
+        end_sample_time     = end_fix_time + par['sample_time']//par['dt']
+        end_delay_time      = end_sample_time + par['delay_time']//par['dt']
+        end_mask_time       = end_delay_time + par['mask_time']//par['dt']
+        end_test_time       = end_delay_time + par['test_time']//par['dt']
+
+        trial_info['train_mask'][:end_dead_time,...] = 0.
+        trial_info['train_mask'][end_delay_time:end_mask_time,...] = 0.
+        trial_info['train_mask'][end_mask_time:end_test_time,...] = par['response_multiplier']
+
+        sample_direction   = np.random.choice(par['num_motion_dirs'], size=par['batch_size'])
 
         for t in range(par['batch_size']):
-            dir = np.random.choice(par['num_motion_dirs'])
-            trial_info['neural_input'][par['dead_time']:,t,:par['num_motion_tuned']] += self.motion_tuning[np.newaxis,:,0,dir]
 
-            out = 1 if dir < 4 else 2
-            trial_info['desired_output'][par['dead_time']:,t,out] = 1.
+            trial_info['neural_input'][end_dead_time:end_delay_time,t,par['num_motion_tuned']:par['num_motion_tuned']+par['num_fix_tuned']] += self.fix_tuning[np.newaxis,:,0]
+            trial_info['neural_input'][end_fix_time:end_test_time,t,:par['num_motion_tuned']] += self.motion_tuning[np.newaxis,:,0,sample_direction[t]]
+
+            output_neuron = 1 if sample_direction[t] < 4 else 2
+            trial_info['desired_output'][end_dead_time:end_delay_time,t,0] = 1.
+            trial_info['desired_output'][end_delay_time:end_test_time,t,output_neuron] = 1.
 
         return trial_info
 

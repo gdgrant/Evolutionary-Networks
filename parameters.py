@@ -11,7 +11,7 @@ par = {
     'EI_prop'               : 0.8,
     'iters_per_output'      : 5,
 
-    'n_networks'            : 2000,
+    'n_networks'            : 40,
     'n_hidden'              : 100,
     'n_output'              : 3,
 
@@ -29,14 +29,14 @@ par = {
     'noise_rnn_sd'          : 0.05,
     'noise_in_sd'           : 0.05,
 
-    'dt'                    : 2,
-    'membrane_constant'     : 100,
+    'dt'                    : 1,
+    'membrane_constant'     : 20,
     'output_constant'       : 200,
 
     'dead_time'             : 100,
     'fix_time'              : 200,
     'sample_time'           : 200,
-    'delay_time'            : 200,
+    'delay_time'            : 300,
     'test_time'             : 200,
     'mask_time'             : 50,
 
@@ -45,12 +45,12 @@ par = {
 
     'survival_rate'         : 0.10,
     'mutation_rate'         : 0.25,
-    'mutation_strength'     : 0.125,
+    'mutation_strength'     : 0.25,
     'cross_rate'            : 0.25,
 
-    'task'                  : 'demo',
+    'task'                  : 'oic',
     'kappa'                 : 2.0,
-    'tuning_height'         : 40.0,
+    'tuning_height'         : 20.0,
     'response_multiplier'   : 4.0,
     'num_rules'             : 1,
 

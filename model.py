@@ -22,7 +22,7 @@ class NetworkController:
         """ Pull constants into GPU """
 
         constant_names = ['alpha_neuron', 'beta_neuron', 'noise_rnn', 'W_rnn_mask', \
-            'mutation_rate', 'mutation_strength', 'cross_rate', 'EI_mask', 'loss_baseline']
+            'mutation_rate', 'mutation_strength', 'cross_rate', 'EI_mask', 'loss_baseline', 'dt']
         stp_constants = ['syn_x_init', 'syn_u_init', 'U', 'alpha_stf', 'alpha_std', 'dt_sec']
 
         constant_names += stp_constants if par['use_stp'] else []
@@ -63,10 +63,16 @@ class NetworkController:
                 self.y[t,...] = cp.matmul(h, self.var_dict['W_out']) + self.var_dict['b_out']
 
         elif par['network_type'] == 'spiking':
+            h_out_save = []
             for t in range(par['num_time_steps']):
                 h_out, h, syn_x, syn_u = self.LIF_spiking_recurrent_cell(h_out, h, input_data[t], syn_x, syn_u)
                 self.y[t,...] = (1-self.con_dict['beta_neuron'])*self.y[t-1,...] \
-                              + self.con_dict['beta_neuron']*(cp.matmul(h_out, self.var_dict['W_out']) + self.var_dict['b_out'])
+                              + cp.matmul(h_out, self.var_dict['W_out']) + self.var_dict['b_out']
+                h_out_save.append(h_out)
+            h_out_save = cp.stack(h_out_save, axis=0)
+            self.h_out_mean = cp.mean(h_out_save)*self.con_dict['dt']*1000
+
+        return to_cpu(h_out_save)
 
 
     def recurrent_cell(self, h_out, h, rnn_input, syn_x, syn_u):
@@ -121,11 +127,13 @@ class NetworkController:
 
         self.output_data = to_gpu(output_data)
         self.output_mask = to_gpu(output_mask)
-        eps = 1e-7
 
-        self.loss = -cp.mean(self.output_mask[...,cp.newaxis]*softmax(self.y)*cp.log(self.output_data+eps), axis=(0,2,3))
+        self.loss = cross_entropy(self.output_mask, self.output_data, self.y)
+
+        self.freq_loss = 1e-5*cp.square(self.h_out_mean-20)
+        self.loss += self.freq_loss
+
         self.loss[cp.where(cp.isnan(self.loss))] = self.con_dict['loss_baseline']
-
         self.rank = cp.argsort(self.loss.astype(cp.float32))
 
         for name in self.var_dict.keys():
@@ -186,16 +194,18 @@ def main():
     for i in range(par['iterations']):
 
         trial_info = stim.make_batch()
-        control.run_models(trial_info['neural_input'])
-        loss = control.judge_models(trial_info['desired_output'], trial_info['train_mask'])
+        h_out = control.run_models(trial_info['neural_input'])
+        loss  = control.judge_models(trial_info['desired_output'], trial_info['train_mask'])
 
-        mutation_strength = par['mutation_strength']*np.mean(loss)/loss_baseline
+        mutation_strength = par['mutation_strength']*(np.mean(loss)/loss_baseline)**1.3
         if np.mean(loss)/loss_baseline < 0.025:
             mutation_strength = par['mutation_strength']*np.mean(loss)/loss_baseline * (1/8)
         elif np.mean(loss)/loss_baseline < 0.05:
             mutation_strength = par['mutation_strength']*np.mean(loss)/loss_baseline * (1/4)
         elif np.mean(loss)/loss_baseline < 0.1:
             mutation_strength = par['mutation_strength']*np.mean(loss)/loss_baseline * (1/2)
+
+        mutation_strength = np.minimum(par['mutation_strength'], mutation_strength)
         control.update_mutation_constants(mutation_strength, par['mutation_rate'])
         control.breed_models()
 
@@ -209,9 +219,24 @@ def main():
             save_record['mut_str'].append(mutation_strength)
             pickle.dump(save_record, open(par['save_dir']+par['save_fn']+'.pkl', 'wb'))
 
+            h_out = np.mean(h_out, axis=(1,2))
+
+            end_dead_time       = par['dead_time']//par['dt']
+            end_fix_time        = end_dead_time   + par['fix_time']//par['dt']
+            end_sample_time     = end_fix_time    + par['sample_time']//par['dt']
+            end_delay_time      = end_sample_time + par['delay_time']//par['dt']
+            end_mask_time       = end_delay_time  + par['mask_time']//par['dt']
+            end_test_time       = end_delay_time  + par['test_time']//par['dt']
+
+            h_out_pre = np.mean(h_out[:end_fix_time,:])*par['dt']*1000
+            h_out_fix = np.mean(h_out[end_dead_time:end_fix_time,:])*par['dt']*1000
+            h_out_show = np.mean(h_out[end_fix_time:end_delay_time,:])*par['dt']*1000
+            h_out_resp = np.mean(h_out[end_delay_time:end_test_time,:])*par['dt']*1000
+
             print('Iter: {:4} | Loss: {:5.3f} | Task Acc: {:5.3f} | Full Acc: {:5.3f} | Mut. Str.: {:5.3f}'.format( \
                 i, np.mean(loss[:par['num_survivors']]), np.mean(task_accuracy[:par['num_survivors']]), \
                 np.mean(full_accuracy[:par['num_survivors']]), mutation_strength))
+            print('Dead Time: {:5.2f} | Fixation: {:5.2f} | Stimulus: {:5.2f} | Response: {:5.2f}'.format(h_out_pre, h_out_fix, h_out_show, h_out_resp))
 
 
 if __name__ == '__main__':

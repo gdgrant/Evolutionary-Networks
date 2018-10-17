@@ -41,6 +41,19 @@ def apply_EI(var, ei):
     return cp.matmul(relu(var), ei)
 
 
+### Judgement functions
+
+def cross_entropy(mask, target, output, eps=1e-7):
+    """ Calculate the cross entropy loss for a rate-based network """
+    return -cp.mean(mask[...,cp.newaxis]*softmax(output)*cp.log(target+eps), axis=(0,2,3))
+
+
+def spiking_cross_entropy(mask, target, output, eps=1e-7):
+    """ Calculate the cross entropy loss for a spiking network """
+
+    fixation_loss = mask[...,cp.newaxis]*(output[...,0]==1.)
+
+
 ### Optimization functions
 
 def cross(var1, var2, rate):
