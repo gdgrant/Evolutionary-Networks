@@ -63,14 +63,13 @@ class NetworkController:
                 self.y[t,...] = cp.matmul(h, self.var_dict['W_out']) + self.var_dict['b_out']
 
         elif par['network_type'] == 'spiking':
-            h_out_save = []
+            h_out_save = cp.zeros([par['n_networks']])
             for t in range(par['num_time_steps']):
                 h_out, h, syn_x, syn_u = self.LIF_spiking_recurrent_cell(h_out, h, input_data[t], syn_x, syn_u)
                 self.y[t,...] = (1-self.con_dict['beta_neuron'])*self.y[t-1,...] \
                               + cp.matmul(h_out, self.var_dict['W_out']) + self.var_dict['b_out']
-                h_out_save.append(h_out)
-            h_out_save = cp.stack(h_out_save, axis=0)
-            self.h_out_mean = cp.mean(h_out_save)*self.con_dict['dt']*1000
+                h_out_save += cp.mean(h_out, axis=(1,2))
+            self.h_out_mean = h_out_save*self.con_dict['dt']*1000
 
         return to_cpu(h_out_save)
 
@@ -106,7 +105,7 @@ class NetworkController:
             syn_u += self.con_dict['alpha_stf']*(self.con_dict['U']-syn_x) - self.con_dict['dt_sec']*self.con_dict['U']*(1-syn_u)*h_out
             syn_x = cp.minimum(1., relu(syn_x))
             syn_u = cp.minimum(1., relu(syn_u))
-            h_post = syn_u*syn_x*h
+            h_post = syn_u*syn_x*h_out
         else:
             h_post = h_out
 
@@ -130,7 +129,7 @@ class NetworkController:
 
         self.loss = cross_entropy(self.output_mask, self.output_data, self.y)
 
-        self.freq_loss = 1e-5*cp.square(self.h_out_mean-20)
+        self.freq_loss = 1e-4*cp.square(self.h_out_mean-20)
         self.loss += self.freq_loss
 
         self.loss[cp.where(cp.isnan(self.loss))] = self.con_dict['loss_baseline']
@@ -219,9 +218,9 @@ def main():
             save_record['mut_str'].append(mutation_strength)
             pickle.dump(save_record, open(par['save_dir']+par['save_fn']+'.pkl', 'wb'))
 
-            h_out = np.mean(h_out, axis=(1,2))
+            h_out = np.mean(h_out[:par['num_survivors']])*par['dt']*1000
 
-            end_dead_time       = par['dead_time']//par['dt']
+            """end_dead_time       = par['dead_time']//par['dt']
             end_fix_time        = end_dead_time   + par['fix_time']//par['dt']
             end_sample_time     = end_fix_time    + par['sample_time']//par['dt']
             end_delay_time      = end_sample_time + par['delay_time']//par['dt']
@@ -231,12 +230,26 @@ def main():
             h_out_pre = np.mean(h_out[:end_fix_time,:])*par['dt']*1000
             h_out_fix = np.mean(h_out[end_dead_time:end_fix_time,:])*par['dt']*1000
             h_out_show = np.mean(h_out[end_fix_time:end_delay_time,:])*par['dt']*1000
-            h_out_resp = np.mean(h_out[end_delay_time:end_test_time,:])*par['dt']*1000
+            h_out_resp = np.mean(h_out[end_delay_time:end_test_time,:])*par['dt']*1000"""
 
-            print('Iter: {:4} | Loss: {:5.3f} | Task Acc: {:5.3f} | Full Acc: {:5.3f} | Mut. Str.: {:5.3f}'.format( \
+            names = ['Iter', 'Loss', 'Task Acc', 'Full Acc', 'Mut. Str.', 'Spike Rate']
+            elements = [i, np.mean(loss[:par['num_survivors']]), np.mean(task_accuracy[:par['num_survivors']]), \
+                np.mean(full_accuracy[:par['num_survivors']]), mutation_strength, h_out]
+            status_string = ''
+            for n, e in zip(names, elements):
+                if n=='Spike Rate':
+                    status_string += '{}: {:5.1f} Hz | '.format(n, e)
+                elif n == 'Iter':
+                    status_string += '{}: {:4} | '.format(n, e)
+                else:
+                    status_string += '{}: {:5.3f} | '.format(n, e)
+
+            print(status_string)
+            """print('Iter: {:4} | Loss: {:5.3f} | Task Acc: {:5.3f} | Full Acc: {:5.3f} | Mut. Str.: {:5.3f}'.format( \
                 i, np.mean(loss[:par['num_survivors']]), np.mean(task_accuracy[:par['num_survivors']]), \
                 np.mean(full_accuracy[:par['num_survivors']]), mutation_strength))
-            print('Dead Time: {:5.2f} | Fixation: {:5.2f} | Stimulus: {:5.2f} | Response: {:5.2f}'.format(h_out_pre, h_out_fix, h_out_show, h_out_resp))
+            print('Mean Spike Rate: {:5.2f} Hz'.format(h_out))"""
+            #print('Dead Time: {:5.2f} | Fixation: {:5.2f} | Stimulus: {:5.2f} | Response: {:5.2f}'.format(h_out_pre, h_out_fix, h_out_show, h_out_resp))
 
 
 if __name__ == '__main__':

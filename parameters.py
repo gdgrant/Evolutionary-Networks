@@ -11,7 +11,7 @@ par = {
     'EI_prop'               : 0.8,
     'iters_per_output'      : 5,
 
-    'n_networks'            : 40,
+    'n_networks'            : 2000,
     'n_hidden'              : 100,
     'n_output'              : 3,
 
@@ -45,7 +45,7 @@ par = {
 
     'survival_rate'         : 0.10,
     'mutation_rate'         : 0.25,
-    'mutation_strength'     : 0.25,
+    'mutation_strength'     : 1.00,
     'cross_rate'            : 0.25,
 
     'task'                  : 'oic',
