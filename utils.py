@@ -48,6 +48,11 @@ def cross_entropy(mask, target, output, eps=1e-7):
     return -cp.mean(mask[...,cp.newaxis]*target*cp.log(softmax(output)+eps), axis=(0,2,3))
 
 
+def cross_entropy_cpu(mask, target, output, eps=1e-7):
+    """ Calculate the cross entropy loss for a rate-based network """
+    return -np.mean(mask[...,np.newaxis]*target*np.log(softmax(output)+eps), axis=(0,2,3))
+
+
 def spiking_cross_entropy(mask, target, output, eps=1e-7):
     """ Calculate the cross entropy loss for a spiking network """
 
