@@ -121,7 +121,7 @@ class NetworkController:
 
         if par['use_latency']:
             ind = np.ones([par['n_hidden'],1]) * t
-            modded = ((ind+self.con_dict['latency_matrix'])%par['max_latency']).astype(cp.int8)
+            modded = ((ind+self.con_dict['latency_matrix'])%self.con_dict['max_latency']).astype(cp.int8)
 
             for i in range(par['n_hidden']):
                 for j in range(par['n_hidden']):
