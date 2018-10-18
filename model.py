@@ -124,6 +124,24 @@ class NetworkController:
         return h_out, h, syn_x, syn_u
 
 
+    def AdEx_spiking_recurrent_cell(self, V, w, rnn_input, syn_x, syn_u):
+        """ Process one time step of the hidden layer
+            based on the previous state and the current input,
+            using adaptive-exponential spiking """
+
+        if par['use_stp']:
+            syn_x += self.con_dict['alpha_std']*(1-syn_x) - self.con_dict['dt_sec']*syn_u*syn_x*V
+            syn_u += self.con_dict['alpha_stf']*(self.con_dict['U']-syn_x) - self.con_dict['dt_sec']*self.con_dict['U']*(1-syn_u)*V
+            syn_x = cp.minimum(1., relu(syn_x))
+            syn_u = cp.minimum(1., relu(syn_u))
+            V_post = syn_u*syn_x*V
+        else:
+            V_post = V
+
+        I = cp.matmul(rnn_input, self.var_dict['W_in']) + cp.matmul(V_post, self.W_rnn_effective) + self.var_dict['b_rnn']
+
+
+
     def judge_models(self, output_data, output_mask):
         """ Determine the loss and accuracy of each model,
             and rank them accordingly """
