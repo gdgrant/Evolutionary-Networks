@@ -93,12 +93,13 @@ def update_dependencies():
     par['dt_sec']       = par['dt']/1000
     par['alpha_neuron'] = np.float16(par['dt']/par['membrane_constant'])
     par['beta_neuron']  = np.float16(par['dt']/par['output_constant'])
-    par['noise_rnn']    = np.sqrt(2*par['alpha_neuron'])*par['noise_rnn_sd']
-    par['noise_in']     = np.sqrt(2/par['alpha_neuron'])*par['noise_rnn_sd']
+    par['noise_rnn']    = np.float16(np.sqrt(2*par['alpha_neuron'])*par['noise_rnn_sd'])
+    par['noise_in']     = np.float16(np.sqrt(2/par['alpha_neuron'])*par['noise_rnn_sd'])
 
     par['num_survivors'] = int(par['n_networks'] * par['survival_rate'])
 
 
+    ### Synaptic plasticity
     if par['use_stp']:
         par['alpha_stf']  = np.ones((1, 1, par['n_hidden']), dtype=np.float16)
         par['alpha_std']  = np.ones((1, 1, par['n_hidden']), dtype=np.float16)
