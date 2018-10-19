@@ -114,6 +114,13 @@ def sweep_plot():
     plt.show()
 
 
+def explore_spiking():
+    x = pickle.load(open('./savedir/h_out_array.pkl', 'rb'))[:,0,:,:]
+    plt.imshow(x[:,0,:])
+    plt.show()
+
+    return x
 
 
-sweep_plot()
+#sweep_plot()
+x = explore_spiking()

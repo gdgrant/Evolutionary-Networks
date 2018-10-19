@@ -15,7 +15,7 @@ class NetworkController:
         var_names += ['threshold', 'reset'] if par['network_type']=='spiking' else []
         self.var_dict = {}
         for v in var_names:
-            self.var_dict[v] = to_gpu(par[v+'_init'])
+            self.var_dict[v] = to_gpu(par[v+'_init'])/100.
 
 
     def make_constants(self):
@@ -26,10 +26,10 @@ class NetworkController:
         stp_constants = ['syn_x_init', 'syn_u_init', 'U', 'alpha_stf', 'alpha_std', 'dt_sec']
 
         constant_names += stp_constants if par['use_stp'] else []
+        constant_names += ['adex', 'w_init'] if par['spiking_cell'] == 'adex' else []
         self.con_dict = {}
         for c in constant_names:
             self.con_dict[c] = to_gpu(par[c])
-
 
     def update_constant(self, con_name, con):
         """ Update a given constant in the model """
@@ -54,9 +54,13 @@ class NetworkController:
         syn_u  = self.con_dict['syn_u_init'] * cp.ones([par['n_networks'],par['batch_size'],1], dtype=cp.float16)
         h      = self.var_dict['h_init']     * cp.ones([par['n_networks'],par['batch_size'],1], dtype=cp.float16)
         h_out  = cp.zeros([par['n_networks'],par['batch_size'],1], dtype=cp.float16)
+        if par['spiking_cell'] == 'adex':
+            w  = self.con_dict['w_init']     * cp.ones([par['n_networks'],par['batch_size'],1], dtype=cp.float16)
+            h  = 0.*h + self.con_dict['adex']['V_r']
 
         self.W_rnn_effective = apply_EI(self.var_dict['W_rnn'], self.con_dict['EI_mask'])
 
+        record = []
         if par['network_type'] == 'rate_based':
             for t in range(par['num_time_steps']):
                 _, h, syn_x, syn_u = self.recurrent_cell(None, h, input_data[t], syn_x, syn_u)
@@ -65,15 +69,19 @@ class NetworkController:
         elif par['network_type'] == 'spiking':
             h_out_save = cp.zeros([par['n_networks']])
             for t in range(par['num_time_steps']):
-                h_out, h, syn_x, syn_u = self.LIF_spiking_recurrent_cell(h_out, h, input_data[t], syn_x, syn_u)
+                if par['spiking_cell'] == 'LIF':
+                    h_out, h, syn_x, syn_u = self.LIF_spiking_recurrent_cell(h_out, h, input_data[t], syn_x, syn_u)
+                elif par['spiking_cell'] == 'adex':
+                    h_out, h, w, syn_x, syn_u = self.AdEx_spiking_recurrent_cell(h_out, h, w, input_data[t], syn_x, syn_u)
+                #record.append(h_out)
 
                 self.y[t,...] = (1-self.con_dict['beta_neuron'])*self.y[t-1,...] \
-                              + self.con_dict['beta_neuron']*cp.matmul(h_out, self.var_dict['W_out']) + self.var_dict['b_out']
+                              + self.con_dict['beta_neuron']*cp.matmul(h_out, self.var_dict['W_out'])# + self.var_dict['b_out']
 
                 self.y[t,...] = cp.minimum(relu(self.y[t,...]), 5)
 
-                h_out_save += cp.mean(h_out, axis=(1,2))
-            self.h_out_mean = h_out_save*1000/self.con_dict['dt']/par['num_time_steps']
+                h_out_save += cp.mean(h_out, axis=(1,2))/self.con_dict['dt']/par['num_time_steps']
+            self.h_out_mean = h_out_save
 
         return to_cpu(h_out_save)
 
@@ -105,8 +113,8 @@ class NetworkController:
             using leaky integrate-and-fire spiking """
 
         if par['use_stp']:
-            syn_x += self.con_dict['alpha_std']*(1-syn_x) - self.con_dict['dt_sec']*syn_u*syn_x*h_out
-            syn_u += self.con_dict['alpha_stf']*(self.con_dict['U']-syn_x) - self.con_dict['dt_sec']*self.con_dict['U']*(1-syn_u)*h_out
+            syn_x += self.con_dict['alpha_std']*(1-syn_x) - syn_u*syn_x*h_out
+            syn_u += self.con_dict['alpha_stf']*(self.con_dict['U']-syn_x) - self.con_dict['U']*(1-syn_u)*h_out
             syn_x = cp.minimum(1., relu(syn_x))
             syn_u = cp.minimum(1., relu(syn_u))
             h_post = syn_u*syn_x*h_out
@@ -124,22 +132,24 @@ class NetworkController:
         return h_out, h, syn_x, syn_u
 
 
-    def AdEx_spiking_recurrent_cell(self, V, w, rnn_input, syn_x, syn_u):
+    def AdEx_spiking_recurrent_cell(self, h_out, V, w, rnn_input, syn_x, syn_u):
         """ Process one time step of the hidden layer
             based on the previous state and the current input,
             using adaptive-exponential spiking """
 
         if par['use_stp']:
-            syn_x += self.con_dict['alpha_std']*(1-syn_x) - self.con_dict['dt_sec']*syn_u*syn_x*V
-            syn_u += self.con_dict['alpha_stf']*(self.con_dict['U']-syn_x) - self.con_dict['dt_sec']*self.con_dict['U']*(1-syn_u)*V
+            syn_x += self.con_dict['alpha_std']*(1-syn_x) - syn_u*syn_x*h_out
+            syn_u += self.con_dict['alpha_stf']*(self.con_dict['U']-syn_x) - self.con_dict['U']*(1-syn_u)*h_out
             syn_x = cp.minimum(1., relu(syn_x))
             syn_u = cp.minimum(1., relu(syn_u))
-            V_post = syn_u*syn_x*V
+            h_post = syn_u*syn_x*h_out
         else:
-            V_post = V
+            h_post = h_out
 
-        I = cp.matmul(rnn_input, self.var_dict['W_in']) + cp.matmul(V_post, self.W_rnn_effective) + self.var_dict['b_rnn']
+        I = cp.matmul(rnn_input, self.var_dict['W_in']) + cp.matmul(h_post, self.W_rnn_effective)# + self.var_dict['b_rnn']
+        V, w, h_out = run_adex(V, w, I, self.con_dict['adex'])
 
+        return h_out, V, w, syn_x, syn_u
 
 
     def judge_models(self, output_data, output_mask):
@@ -149,10 +159,10 @@ class NetworkController:
         self.output_data = to_gpu(output_data)
         self.output_mask = to_gpu(output_mask)
 
-        self.loss = cross_entropy(self.output_mask, self.output_data, self.y)
+        self.loss = cross_entropy(self.output_mask, self.output_data, self.y) + 1.
 
-        self.freq_loss = 1e-2*cp.square(self.h_out_mean-20)
-        self.loss += self.freq_loss
+        self.freq_loss = cp.abs(self.h_out_mean-20) + 1.
+        self.loss *= self.freq_loss
 
         self.loss[cp.where(cp.isnan(self.loss))] = self.con_dict['loss_baseline']
         self.rank = cp.argsort(self.loss.astype(cp.float32))
@@ -235,9 +245,9 @@ def main():
 
         trial_info = stim.make_batch()
         h_out = control.run_models(trial_info['neural_input'])
-        loss  = control.judge_models(trial_info['desired_output'], trial_info['train_mask'])
+        loss  = control.judge_models(trial_info['desired_output'], trial_info['train_mask'])[:par['num_survivors']]
 
-        mutation_strength = par['mutation_strength']*(np.mean(loss)/loss_baseline)**1.3
+        mutation_strength = par['mutation_strength']*(np.mean(loss)/loss_baseline)
         if np.mean(loss)/loss_baseline < 0.025:
             mutation_strength = par['mutation_strength']*np.mean(loss)/loss_baseline * (1/8)
         elif np.mean(loss)/loss_baseline < 0.05:
@@ -251,6 +261,9 @@ def main():
 
         if i%par['iters_per_output'] == 0:
             task_accuracy, full_accuracy = control.get_performance()
+            """pickle.dump(h_out, open('./savedir/h_out_array.pkl', 'wb'))
+            if i == 15:
+                quit('Cut out at fifteenth iteration.')"""
 
             save_record['iter'].append(i)
             save_record['task_acc'].append(np.mean(task_accuracy[:par['num_survivors']]))
