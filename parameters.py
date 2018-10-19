@@ -8,8 +8,12 @@ par = {
     'save_fn'               : 'testing_spiking',
     'network_type'          : 'spiking',
     'use_stp'               : True,
-    'EI_prop'               : 0.8,
     'iters_per_output'      : 5,
+
+    'EI_prop'               : 0.8,
+    'spiking_cell'          : 'adex',
+    'exc_model'             : 'RS',
+    'inh_model'             : 'cNA',
 
     'n_networks'            : 2000,
     'n_hidden'              : 100,
@@ -120,6 +124,40 @@ def update_dependencies():
             par['U'][0,0,i+1] = 0.45
             par['syn_x_init'][0,0,i+1] = 1
             par['syn_u_init'][0,0,i+1] = par['U'][0,0,i+1]
+
+
+    ### Adaptive-Expoential spiking
+    par['cNA'] = {
+        'C'   : 59e-12,     'g'   : 2.9e-9,     'E'   : -62e-3,
+        'V_T' : -42e-3,     'D'   : 3e-3,       'a'   : 1.8e-9,
+        'tau' : 16e-3,      'b'   : 61e-12,     'V_r' : -54e-3,
+        'Vth' : 20e-3,      'dt'  : par['dt']/1000 }
+    par['RS']  = {
+        'C'   : 104e-12,    'g'   : 4.3e-9,     'E'   : -65e-3,
+        'V_T' : -52e-3,     'D'   : 0.8e-3,     'a'   : -0.8e-9,
+        'tau' : 88e-3,      'b'   : 65e-12,     'V_r' : -53e-3,
+        'Vth' : 20e-3,      'dt'  : par['dt']/1000 }
+
+    par['adex'] = {}
+    for (k0, v_exc), (k1, v_inh) in zip(par['cNA'].items(), par['RS'].items()):
+        assert(k0 == k1)
+        par_matrix = np.ones([1,1,par['n_hidden']], dtype=np.float32)
+        par_matrix[...,:int(par['n_hidden']*par['EI_prop'])] *= v_exc
+        par_matrix[...,int(par['n_hidden']*par['EI_prop']):] *= v_inh
+        par['adex'][k0] = par_matrix
+
+    par['w_init'] = par['adex']['b']
+
+
+
+    # PUSH ALL ADEX CONSTANTS TO GPU AS FLOAT16 FOR GPU COMPUTATION
+    # CHECK OVER RUN_ADEX IN UTILS TO MAKE SURE THAT'S ALL FINE
+
+    # IN THE ADEX RECURRENT CELL:
+    # SEND E PART OF NETWORK THROUGH WITH 'RS', SEND I PART OF NETWORK
+    #   THROUGH WITH 'cNA'.  THIS WILL TAKE CARE OF BOTH PARTS OF THE
+    #   ALGORITHM WITH MINIMAL FRUSTRATION
+
 
 
 update_dependencies()
