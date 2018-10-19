@@ -68,7 +68,7 @@ class NetworkController:
 
         elif par['network_type'] == 'spiking':
             for t in range(par['num_time_steps']):
-                h_out, h, syn_x, syn_u = self.LIF_spiking_recurrent_cell(h_out, h, input_data[t], syn_x, syn_u, h_latency, t)
+                h_out, h, syn_x, syn_u, h_latency = self.LIF_spiking_recurrent_cell(h_out, h, input_data[t], syn_x, syn_u, h_latency, t)
                 self.y[t,...] = (1-self.con_dict['alpha_neuron'])*self.y[t-1,...] \
                               + self.con_dict['alpha_neuron']*(cp.matmul(h_out, self.var_dict['W_out']) + self.var_dict['b_out'])
 
@@ -117,14 +117,30 @@ class NetworkController:
             + cp.random.normal(scale=self.con_dict['noise_rnn'], size=h.shape)
 
         if par['use_latency']:
-            # Modded indicates which index to store hidden activity to in the h_latency matrix
+            # Modded indicates which index to store hidden activity to in the h_latency matrix because we aren't updating h_latency
+
             ind = cp.ones([par['n_hidden'],1]) * t
-            modded = ((ind+self.con_dict['latency_matrix'])%self.con_dict['max_latency']).astype(cp.int8)
+            modded = ((ind+self.con_dict['latency_matrix'])%par['max_latency']).astype(cp.int8)
+
+            print("h shape: {}".format(h.shape))
+            # print("n_hidden shape: {}".format(par['n_hidden'].shape))
+            print("h_latency shape: {}".format(h_latency.shape))
+            print("latency_matrix shape: {}".format(self.con_dict['latency_matrix'].shape))
+            print("modded[:,1,2] shape: {}".format(modded[:,1,2].shape))
+            # quit()
+
+            print("modded[:,1,2]: {}".format(modded[:,1,2]))
+            print("h_latency[modded[:,1,2],:,:,2].shape: {}".format(h_latency[modded[:,1,2],:,:,2].shape))
+            # print("h_latency[2,:,:,2]: {}".format(h_latency[2,:,:,2].shape))
 
             # Determine hidden activity across time based on the latency information
             for i in range(par['n_hidden']):
                 for j in range(par['n_hidden']):
+                    # h_latency[modded[:,i,j],:,:,j] += h[:,:,i]
                     h_latency[modded[:,i,j],:,:,j] += h[:,:,i]
+                    print("{} {} {}".format(t,i,j), end="\r")
+
+
 
             # get new hidden activity by indexing into h_latency and set h_latency at this timepoint to 0
             h = h_latency[t%self.con_dict['max_latency']]
@@ -133,7 +149,7 @@ class NetworkController:
         h_out = cp.where(h > self.var_dict['threshold'], cp.ones_like(h_out), cp.zeros_like(h_out))
         h     = (1 - h_out)*h + h_out*self.var_dict['reset']
 
-        return h_out, h, syn_x, syn_u
+        return h_out, h, syn_x, syn_u, h_latency
 
 
     def judge_models(self, output_data, output_mask):

@@ -31,7 +31,7 @@ par = {
     'noise_rnn_sd'          : 0.05,
     'noise_in_sd'           : 0.05,
 
-    'dt'                    : 2,
+    'dt'                    : 20,
     'membrane_constant'     : 100,
     'max_latency'           : 40,
     'latency_gamma'         : 7.5,
