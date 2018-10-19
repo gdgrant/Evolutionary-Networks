@@ -13,8 +13,11 @@ else:
 ### GPU utilities
 
 def to_gpu(x):
-    """ Move numpy array to GPU """
-    return cp.asarray(x)
+    """ Move numpy array(s) to GPU """
+    if type(x) == dict:
+        return {k:cp.asarray(a) for (k, a) in x.items()}
+    else:
+        return cp.asarray(x)
 
 def to_cpu(x):
     """ Move cupy array to CPU """
@@ -39,6 +42,37 @@ def apply_EI(var, ei):
     """ Applies EI masking to a square variable, according to the given
         excitatory/inhibitory mask """
     return cp.matmul(relu(var), ei)
+
+
+def run_adex(V, w, I, constants):
+
+    I = I.astype(cp.float32)
+
+    V_next      = adex_membrane(V, w, I, constants)
+    w_next      = adex_adaptation(V, w, constants)
+    V, w, h_out = adex_spike(V_next, w_next, constants)
+
+    return V, w, h_out.astype(cp.float16)
+
+def adex_membrane(V, w, I, c):
+
+    term1 = I + c['g']*c['D']*cp.exp((V-c['V_T'])/c['D'])
+    term2 = w + c['g']*(V-c['E'])
+    return V + (c['dt']/c['C'])*(term1-term2)
+
+def adex_adaptation(V, w, c):
+
+    term1 = c['a']*(V-c['E'])
+    term2 = w
+    return w + (c['dt']/c['tau'])*(term1-term2)
+
+def adex_spike(V, w, c):
+
+    spike = V > c['Vth']
+    V = cp.where(spike, c['V_r'], V)
+    w = cp.where(spike, w + c['b'], w)
+
+    return V, w, spike
 
 
 ### Judgement functions
