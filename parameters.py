@@ -139,7 +139,7 @@ def update_dependencies():
         'Vth' : 20e-3,      'dt'  : par['dt']/1000 }
 
     par['adex'] = {}
-    for (k0, v_exc), (k1, v_inh) in zip(par['cNA'].items(), par['RS'].items()):
+    for (k0, v_exc), (k1, v_inh) in zip(par[par['exc_model']].items(), par[par['inh_model']].items()):
         assert(k0 == k1)
         par_matrix = np.ones([1,1,par['n_hidden']], dtype=np.float32)
         par_matrix[...,:int(par['n_hidden']*par['EI_prop'])] *= v_exc
