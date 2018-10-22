@@ -16,7 +16,7 @@ par = {
     'inh_model'             : 'cNA',
 
     'n_networks'            : 2000,
-    'n_hidden'              : 100,
+    'n_hidden'              : 150,
     'n_output'              : 3,
 
     'num_motion_tuned'      : 24,
@@ -47,7 +47,7 @@ par = {
     'tau_fast'              : 200,
     'tau_slow'              : 1500,
 
-    'freq_cost'             : 1e-4,
+    'freq_cost'             : 1e-3,
 
     'survival_rate'         : 0.10,
     'mutation_rate'         : 0.25,

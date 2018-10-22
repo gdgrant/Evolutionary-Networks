@@ -16,9 +16,10 @@ def try_model(updates):
 
 updates = {
     'iterations'        : 10001,
-    'use_stp'           : False,
-    'mutation_strength' : 0.08,
-    'save_fn'           : 'dms_without_stp_v0'
+    'use_stp'           : True,
+    'mutation_strength' : 0.008,
+    'cross_rate'        : 0.01,
+    'save_fn'           : 'dms_with_stp_v0'
 }
 
 try_model(updates)
