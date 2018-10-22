@@ -13,18 +13,24 @@ else:
 ### GPU utilities
 
 def to_gpu(x):
-    """ Move numpy array(s) to GPU """
+    """ Move numpy arrays (or dicts of arrays) to GPU """
     if type(x) == dict:
         return {k:cp.asarray(a) for (k, a) in x.items()}
     else:
         return cp.asarray(x)
 
 def to_cpu(x):
-    """ Move cupy array to CPU """
+    """ Move cupy arrays (or dicts of arrays) to CPU """
     if len(sys.argv) > 1:
-        return cp.asnumpy(x.astype(cp.float32))
+        if type(x) == dict:
+            return {k:cp.asnumpy(a.astype(cp.float32)) for (k, a) in x.items()}
+        else:
+            return cp.asnumpy(x.astype(cp.float32))
     else:
-        return x.astype(cp.float32)
+        if type(x) == dict:
+            return {k:x.astype(cp.float32) for (k, a) in x.items()}
+        else:
+            return x.astype(cp.float32)
 
 
 ### Network functions
