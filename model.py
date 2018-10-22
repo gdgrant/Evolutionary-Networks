@@ -9,6 +9,7 @@ class NetworkController:
 
         self.make_variables()
         self.make_constants()
+        self.size_ref = cp.ones([par['n_networks'],par['batch_size'],par['n_hidden']], dtype=cp.float16)
 
 
     def make_variables(self):
@@ -29,7 +30,7 @@ class NetworkController:
         stp_constants = ['syn_x_init', 'syn_u_init', 'U', 'alpha_stf', 'alpha_std', 'dt_sec']
 
         constant_names += stp_constants if par['use_stp'] else []
-        constant_names += ['adex', 'w_init'] if par['spiking_cell'] == 'adex' else []
+        constant_names += ['adex', 'w_init'] if par['cell_type'] == 'adex' else []
         self.con_dict = {}
         for c in constant_names:
             self.con_dict[c] = to_gpu(par[c])
@@ -47,13 +48,13 @@ class NetworkController:
         input_data = to_gpu(input_data)
 
         self.y = cp.zeros([par['num_time_steps'], par['n_networks'], par['batch_size'], par['n_output']], dtype=cp.float16)
-        syn_x  = self.con_dict['syn_x_init'] * cp.ones([par['n_networks'],par['batch_size'],1], dtype=cp.float16) if par['use_stp'] else 0.
-        syn_u  = self.con_dict['syn_u_init'] * cp.ones([par['n_networks'],par['batch_size'],1], dtype=cp.float16) if par['use_stp'] else 0.
-        h      = self.var_dict['h_init']     * cp.ones([par['n_networks'],par['batch_size'],1], dtype=cp.float16)
-        h_out  = cp.zeros([par['n_networks'],par['batch_size'],1], dtype=cp.float16)
-        if par['spiking_cell'] == 'adex':
-            w  = self.con_dict['w_init']     * cp.ones([par['n_networks'],par['batch_size'],1], dtype=cp.float16)
-            h  = 0.*h + self.con_dict['adex']['V_r']
+        syn_x  = self.con_dict['syn_x_init']  * self.size_ref if par['use_stp'] else 0.
+        syn_u  = self.con_dict['syn_u_init']  * self.size_ref if par['use_stp'] else 0.
+        h      = self.var_dict['h_init']      * self.size_ref
+        h_out  = cp.zeros_like(h)
+        if par['cell_type'] == 'adex':
+            w  = self.con_dict['w_init']      * self.size_ref
+            h  = self.con_dict['adex']['V_r'] * self.size_ref
 
         self.W_rnn_effective = apply_EI(self.var_dict['W_rnn'], self.con_dict['EI_mask'])
 
@@ -245,7 +246,7 @@ def main():
                 print('Saving weights for iteration {}...'.format(i))
                 pickle.dump(to_cpu(control.var_dict), open(par['save_dir']+par['save_fn']+'_weights.pkl', 'wb'))
 
-            status_string = 'Iter: {:4} | Loss: {:5.3f} | Task/Full Acc: {:5.3f} / {:5.3f} | ' +
+            status_string = 'Iter: {:4} | Loss: {:5.3f} | Task/Full Acc: {:5.3f} / {:5.3f} | ' \
                 'Mut Str: {:5.3f} | Spiking: {:3.0f} Hz'.format(i, curr_loss, task_acc, full_acc, mutation_strength, spiking)
             print(status_string)
 

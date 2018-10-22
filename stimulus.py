@@ -16,7 +16,7 @@ class Stimulus:
         else:
             raise Exception('Task "{}" not yet implemented.'.format(par['task']))
 
-        if par['network_type'] == 'spiking':
+        if par['cell_type'] != 'rate':
             trial_info = self.make_spiking(trial_info)
 
         trial_info['neural_input']   = trial_info['neural_input'][:,np.newaxis,...]
