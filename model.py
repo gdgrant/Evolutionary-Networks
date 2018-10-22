@@ -26,13 +26,15 @@ class NetworkController:
     def make_constants(self):
         """ Pull constants into GPU """
 
-        constant_names = ['alpha_neuron', 'beta_neuron', 'noise_rnn', 'W_rnn_mask', \
+        constant_names    = ['alpha_neuron', 'beta_neuron', 'noise_rnn', 'W_rnn_mask', \
             'mutation_rate', 'mutation_strength', 'cross_rate', 'EI_mask', 'loss_baseline', 'dt', 'freq_cost']
-        stp_constants  = ['syn_x_init', 'syn_u_init', 'U', 'alpha_stf', 'alpha_std', 'stp_mod']
-        adex_constants = ['adex', 'w_init']
+        stp_constants     = ['syn_x_init', 'syn_u_init', 'U', 'alpha_stf', 'alpha_std', 'stp_mod']
+        adex_constants    = ['adex', 'w_init']
+        latency_constants = ['max_latency', 'latency_mask']
 
         constant_names += stp_constants  if par['use_stp'] else []
         constant_names += adex_constants if par['cell_type'] == 'adex' else []
+        constant_names += latency_constants if par['use_latency'] else []
 
         self.con_dict = {}
         for c in constant_names:
@@ -58,23 +60,25 @@ class NetworkController:
         if par['cell_type'] == 'adex':
             w  = self.con_dict['w_init']      * self.size_ref
             h  = self.con_dict['adex']['V_r'] * self.size_ref
+        if par['use_latency']:
+            self.h_out_buffer = cp.zeros([par['max_latency'], par['n_networks'], par['batch_size'], par['n_hidden']], dtype=cp.float16)
 
         self.W_rnn_effective = apply_EI(self.var_dict['W_rnn'], self.con_dict['EI_mask'])
 
         spiking_means = cp.zeros([par['n_networks']])
         for t in range(par['num_time_steps']):
             if par['cell_type'] == 'rate':
-                _, h, syn_x, syn_u = self.rate_recurrent_cell(None, h, input_data[t], syn_x, syn_u)
+                _, h, syn_x, syn_u = self.rate_recurrent_cell(None, h, input_data[t], syn_x, syn_u, t)
                 self.y[t,...] = cp.matmul(h, self.var_dict['W_out']) + self.var_dict['b_out']
 
             elif par['cell_type'] == 'LIF':
-                h_out, h, syn_x, syn_u = self.LIF_spiking_recurrent_cell(h_out, h, input_data[t], syn_x, syn_u)
+                h_out, h, syn_x, syn_u = self.LIF_spiking_recurrent_cell(h_out, h, input_data[t], syn_x, syn_u, t)
                 self.y[t,...] = (1-self.con_dict['beta_neuron'])*self.y[t-1,...] \
                               + self.con_dict['beta_neuron']*cp.matmul(h_out, self.var_dict['W_out'])# + self.var_dict['b_out']
                 self.y[t,...] = cp.minimum(relu(self.y[t,...]), 5)
 
             elif par['cell_type'] == 'adex':
-                h_out, h, w, syn_x, syn_u = self.AdEx_spiking_recurrent_cell(h_out, h, w, input_data[t], syn_x, syn_u)
+                h_out, h, w, syn_x, syn_u = self.AdEx_spiking_recurrent_cell(h_out, h, w, input_data[t], syn_x, syn_u, t)
                 self.y[t,...] = (1-self.con_dict['beta_neuron'])*self.y[t-1,...] \
                               + self.con_dict['beta_neuron']*cp.matmul(h_out, self.var_dict['W_out'])# + self.var_dict['b_out']
                 self.y[t,...] = cp.minimum(relu(self.y[t,...]), 5)
@@ -85,7 +89,29 @@ class NetworkController:
         return to_cpu(spiking_means)
 
 
-    def rate_recurrent_cell(self, h_out, h, rnn_input, syn_x, syn_u):
+    def rnn_matmul(self, h_in, W_rnn, t):
+        """ Performs the matrix multiplication required for the recurrent
+            weight matrix, performing special operations such as latency
+            where necessary """
+
+        if par['use_latency']:
+            # Calculate this time step's latency-affected W_rnn and switch
+            # to next time step
+            W_rnn_latency = W_rnn[cp.newaxis,:,...] * self.con_dict['latency_mask'][:,cp.newaxis,...]
+            self.con_dict['latency_mask'] = cp.roll(self.con_dict['latency_mask'], shift=1, axis=0)
+
+            # Zero out the previous time step's buffer, and add to the
+            # buffer for the upcoming time steps
+            self.h_out_buffer[t-1%self.con_dict['max_latency'],...] = 0.
+            self.h_out_buffer += cp.matmul(h_in, W_rnn_latency)
+
+            # Return the hidden state buffer for this time step
+            return self.h_out_buffer[t%self.con_dict['max_latency'],...]
+        else:
+            return cp.matmul(h_in, W_rnn)
+
+
+    def rate_recurrent_cell(self, h_out, h, rnn_input, syn_x, syn_u, t):
         """ Process one time step of the hidden layer
             based on the previous state and the current input """
 
@@ -94,13 +120,13 @@ class NetworkController:
 
         h = relu((1-self.con_dict['alpha_neuron'])*h \
             + self.con_dict['alpha_neuron']*(cp.matmul(rnn_input, self.var_dict['W_in']) \
-            + cp.matmul(h_post, self.W_rnn_effective) + self.var_dict['b_rnn']) + \
+            + self.rnn_matmul(h_post, self.W_rnn_effective, t) + self.var_dict['b_rnn']) + \
             + cp.random.normal(scale=self.con_dict['noise_rnn'], size=h.shape))
 
         return None, h, syn_x, syn_u
 
 
-    def LIF_spiking_recurrent_cell(self, h_out, h, rnn_input, syn_x, syn_u):
+    def LIF_spiking_recurrent_cell(self, h_out, h, rnn_input, syn_x, syn_u, t):
         """ Process one time step of the hidden layer
             based on the previous state and the current input,
             using leaky integrate-and-fire spiking """
@@ -110,7 +136,7 @@ class NetworkController:
 
         h = (1-self.con_dict['alpha_neuron'])*h \
             + self.con_dict['alpha_neuron']*(cp.matmul(rnn_input, self.var_dict['W_in']) \
-            + cp.matmul(h_post, self.W_rnn_effective) + self.var_dict['b_rnn']) + \
+            + self.rnn_matmul(h_post, self.W_rnn_effective, t) + self.var_dict['b_rnn']) + \
             + cp.random.normal(scale=self.con_dict['noise_rnn'], size=h.shape)
 
         h_out = cp.where(h > self.var_dict['threshold'], cp.ones_like(h_out), cp.zeros_like(h_out))
@@ -119,7 +145,7 @@ class NetworkController:
         return h_out, h, syn_x, syn_u
 
 
-    def AdEx_spiking_recurrent_cell(self, h_out, V, w, rnn_input, syn_x, syn_u):
+    def AdEx_spiking_recurrent_cell(self, h_out, V, w, rnn_input, syn_x, syn_u, t):
         """ Process one time step of the hidden layer
             based on the previous state and the current input,
             using adaptive-exponential spiking """
@@ -127,7 +153,7 @@ class NetworkController:
         h_post, syn_x, syn_u = synaptic_plasticity(h_out, syn_x, syn_u, \
             self.con_dict, par['use_stp'], par['n_hidden'])
 
-        I = cp.matmul(rnn_input, self.var_dict['W_in']) + cp.matmul(h_post, self.W_rnn_effective)# + self.var_dict['b_rnn']
+        I = cp.matmul(rnn_input, self.var_dict['W_in']) + self.rnn_matmul(h_post, self.W_rnn_effective, t)# + self.var_dict['b_rnn']
         V, w, h_out = run_adex(V, w, I, self.con_dict['adex'])
 
         return h_out, V, w, syn_x, syn_u
@@ -159,7 +185,7 @@ class NetworkController:
 
         self.task_accuracy = accuracy(self.y, self.output_data, self.output_mask)
         self.full_accuracy = accuracy(self.y, self.output_data, self.output_mask, inc_fix=True)
-        
+
         return to_cpu(self.task_accuracy[self.rank]), to_cpu(self.full_accuracy[self.rank])
 
 
@@ -218,7 +244,7 @@ def main():
             task_acc  = np.mean(task_accuracy[:par['num_survivors']])
             full_acc  = np.mean(full_accuracy[:par['num_survivors']])
             curr_loss = np.mean(loss[:par['num_survivors']])
-            spiking   = np.mean(h_out[:par['num_survivors']])*par['dt']*1000
+            spiking   = np.mean(h_out[:par['num_survivors']])*1000/par['dt']
 
             save_record['iter'].append(i)
             save_record['task_acc'].append(task_acc)

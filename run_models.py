@@ -14,12 +14,11 @@ def try_model(updates):
     except KeyboardInterrupt:
         quit('Quit by KeyboardInterrupt.  Run time: {:5.3f} s.\n\n'.format(time.time()-t0))
 
+
 updates = {
-    'iterations'        : 10001,
-    'use_stp'           : True,
-    'mutation_strength' : 0.008,
-    'cross_rate'        : 0.01,
-    'save_fn'           : 'dms_with_stp_v0'
+    'iterations'    : 10001,
+    'task'          : 'dms',
+    'save_fn'       : 'spiking_latent_dms_v0'
 }
 
 try_model(updates)

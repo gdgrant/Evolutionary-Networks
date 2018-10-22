@@ -1,4 +1,5 @@
 import numpy as np
+from itertools import product
 print('\n--> Loading parameters...')
 
 global par
@@ -15,7 +16,11 @@ par = {
     'exc_model'             : 'RS',
     'inh_model'             : 'cNA',
 
-    'n_networks'            : 2000,
+    'use_latency'           : True,
+    'latency_limit'         : 20,
+    'latency_gamma'         : 7.5,
+
+    'n_networks'            : 1000,
     'n_hidden'              : 150,
     'n_output'              : 3,
 
@@ -47,14 +52,14 @@ par = {
     'tau_fast'              : 200,
     'tau_slow'              : 1500,
 
-    'freq_cost'             : 1e-3,
+    'freq_cost'             : 1e-4,
 
     'survival_rate'         : 0.10,
     'mutation_rate'         : 0.25,
     'mutation_strength'     : 0.80,
     'cross_rate'            : 0.25,
 
-    'task'                  : 'dms',
+    'task'                  : 'oic',
     'kappa'                 : 2.0,
     'tuning_height'         : 20.0,
     'response_multiplier'   : 10.0,
@@ -157,6 +162,19 @@ def update_dependencies():
             par['adex'][k0] = par_matrix
 
         par['w_init'] = par['adex']['b']
+
+
+    ### Latency-based weights
+    if par['use_latency']:
+        par['max_latency'] = par['latency_limit']//par['dt']
+
+        # TODO: use better truncation method for the distribution
+        par['latency_matrix'] = np.random.gamma(shape=par['latency_gamma'], scale=1., size=[par['n_hidden'], par['n_hidden']]).astype(np.int8)
+        par['latency_matrix'] %= par['max_latency']
+
+        par['latency_mask'] = np.zeros([par['max_latency'], par['n_hidden'], par['n_hidden']]).astype(np.float32)
+        for i, j in product(range(par['n_hidden']), range(par['n_hidden'])):
+            par['latency_mask'][par['latency_matrix'][i,j],i,j] = 1.
 
 
 update_dependencies()
