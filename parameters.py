@@ -49,10 +49,10 @@ par = {
 
     'survival_rate'         : 0.10,
     'mutation_rate'         : 0.25,
-    'mutation_strength'     : 1.00,
+    'mutation_strength'     : 0.80,
     'cross_rate'            : 0.25,
 
-    'task'                  : 'oic',
+    'task'                  : 'dms',
     'kappa'                 : 2.0,
     'tuning_height'         : 20.0,
     'response_multiplier'   : 10.0,
