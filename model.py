@@ -207,7 +207,7 @@ def main():
     control.update_constant('loss_baseline', loss_baseline)
 
     # Records
-    save_record = {'iter':[], 'task_acc':[], 'full_acc':[], 'loss':[], 'mut_str':[]}
+    save_record = {'iter':[], 'task_acc':[], 'full_acc':[], 'loss':[], 'mut_str':[], 'spiking':[]}
 
     for i in range(par['iterations']):
 

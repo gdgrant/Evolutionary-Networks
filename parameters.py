@@ -132,26 +132,27 @@ def update_dependencies():
 
 
     ### Adaptive-Expoential spiking
-    par['cNA'] = {
-        'C'   : 59e-12,     'g'   : 2.9e-9,     'E'   : -62e-3,
-        'V_T' : -42e-3,     'D'   : 3e-3,       'a'   : 1.8e-9,
-        'tau' : 16e-3,      'b'   : 61e-12,     'V_r' : -54e-3,
-        'Vth' : 20e-3,      'dt'  : par['dt']/1000 }
-    par['RS']  = {
-        'C'   : 104e-12,    'g'   : 4.3e-9,     'E'   : -65e-3,
-        'V_T' : -52e-3,     'D'   : 0.8e-3,     'a'   : -0.8e-9,
-        'tau' : 88e-3,      'b'   : 65e-12,     'V_r' : -53e-3,
-        'Vth' : 20e-3,      'dt'  : par['dt']/1000 }
+    if par['cell_type'] == 'adex':
+        par['cNA'] = {
+            'C'   : 59e-12,     'g'   : 2.9e-9,     'E'   : -62e-3,
+            'V_T' : -42e-3,     'D'   : 3e-3,       'a'   : 1.8e-9,
+            'tau' : 16e-3,      'b'   : 61e-12,     'V_r' : -54e-3,
+            'Vth' : 20e-3,      'dt'  : par['dt']/1000 }
+        par['RS']  = {
+            'C'   : 104e-12,    'g'   : 4.3e-9,     'E'   : -65e-3,
+            'V_T' : -52e-3,     'D'   : 0.8e-3,     'a'   : -0.8e-9,
+            'tau' : 88e-3,      'b'   : 65e-12,     'V_r' : -53e-3,
+            'Vth' : 20e-3,      'dt'  : par['dt']/1000 }
 
-    par['adex'] = {}
-    for (k0, v_exc), (k1, v_inh) in zip(par[par['exc_model']].items(), par[par['inh_model']].items()):
-        assert(k0 == k1)
-        par_matrix = np.ones([1,1,par['n_hidden']], dtype=np.float32)
-        par_matrix[...,:int(par['n_hidden']*par['EI_prop'])] *= v_exc
-        par_matrix[...,int(par['n_hidden']*par['EI_prop']):] *= v_inh
-        par['adex'][k0] = par_matrix
+        par['adex'] = {}
+        for (k0, v_exc), (k1, v_inh) in zip(par[par['exc_model']].items(), par[par['inh_model']].items()):
+            assert(k0 == k1)
+            par_matrix = np.ones([1,1,par['n_hidden']], dtype=np.float32)
+            par_matrix[...,:int(par['n_hidden']*par['EI_prop'])] *= v_exc
+            par_matrix[...,int(par['n_hidden']*par['EI_prop']):] *= v_inh
+            par['adex'][k0] = par_matrix
 
-    par['w_init'] = par['adex']['b']
+        par['w_init'] = par['adex']['b']
 
 
 update_dependencies()
