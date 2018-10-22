@@ -50,8 +50,11 @@ class NetworkController:
         input_data = to_gpu(input_data)
 
         self.y = cp.zeros([par['num_time_steps'], par['n_networks'], par['batch_size'], par['n_output']], dtype=cp.float16)
-        syn_x  = self.con_dict['syn_x_init'] * cp.ones([par['n_networks'],par['batch_size'],1], dtype=cp.float16)
-        syn_u  = self.con_dict['syn_u_init'] * cp.ones([par['n_networks'],par['batch_size'],1], dtype=cp.float16)
+        if par['use_stp']:
+            syn_x  = self.con_dict['syn_x_init'] * cp.ones([par['n_networks'],par['batch_size'],1], dtype=cp.float16)
+            syn_u  = self.con_dict['syn_u_init'] * cp.ones([par['n_networks'],par['batch_size'],1], dtype=cp.float16)
+        else:
+            syn_x = syn_u = 0.
         h      = self.var_dict['h_init']     * cp.ones([par['n_networks'],par['batch_size'],1], dtype=cp.float16)
         h_out  = cp.zeros([par['n_networks'],par['batch_size'],1], dtype=cp.float16)
         if par['spiking_cell'] == 'adex':
@@ -90,14 +93,8 @@ class NetworkController:
         """ Process one time step of the hidden layer
             based on the previous state and the current input """
 
-        if par['use_stp']:
-            syn_x += self.con_dict['alpha_std']*(1-syn_x) - self.con_dict['dt_sec']*syn_u*syn_x*h
-            syn_u += self.con_dict['alpha_stf']*(self.con_dict['U']-syn_x) - self.con_dict['dt_sec']*self.con_dict['U']*(1-syn_u)*h
-            syn_x = cp.minimum(1., relu(syn_x))
-            syn_u = cp.minimum(1., relu(syn_u))
-            h_post = syn_u*syn_x*h
-        else:
-            h_post = h
+        h_post, syn_x, syn_u = synaptic_plasticity(h_out, syn_x, syn_u, \
+            self.con_dict, par['use_stp'], par['n_hidden'])
 
         h = relu((1-self.con_dict['alpha_neuron'])*h \
             + self.con_dict['alpha_neuron']*(cp.matmul(rnn_input, self.var_dict['W_in']) \
@@ -112,14 +109,8 @@ class NetworkController:
             based on the previous state and the current input,
             using leaky integrate-and-fire spiking """
 
-        if par['use_stp']:
-            syn_x += self.con_dict['alpha_std']*(1-syn_x) - syn_u*syn_x*h_out
-            syn_u += self.con_dict['alpha_stf']*(self.con_dict['U']-syn_x) - self.con_dict['U']*(1-syn_u)*h_out
-            syn_x = cp.minimum(1., relu(syn_x))
-            syn_u = cp.minimum(1., relu(syn_u))
-            h_post = syn_u*syn_x*h_out
-        else:
-            h_post = h_out
+        h_post, syn_x, syn_u = synaptic_plasticity(h_out, syn_x, syn_u, \
+            self.con_dict, par['use_stp'], par['n_hidden'])
 
         h = (1-self.con_dict['alpha_neuron'])*h \
             + self.con_dict['alpha_neuron']*(cp.matmul(rnn_input, self.var_dict['W_in']) \
@@ -137,14 +128,8 @@ class NetworkController:
             based on the previous state and the current input,
             using adaptive-exponential spiking """
 
-        if par['use_stp']:
-            syn_x += self.con_dict['alpha_std']*(1-syn_x) - syn_u*syn_x*h_out
-            syn_u += self.con_dict['alpha_stf']*(self.con_dict['U']-syn_x) - self.con_dict['U']*(1-syn_u)*h_out
-            syn_x = cp.minimum(1., relu(syn_x))
-            syn_u = cp.minimum(1., relu(syn_u))
-            h_post = syn_u*syn_x*h_out
-        else:
-            h_post = h_out
+        h_post, syn_x, syn_u = synaptic_plasticity(h_out, syn_x, syn_u, \
+            self.con_dict, par['use_stp'], par['n_hidden'])
 
         I = cp.matmul(rnn_input, self.var_dict['W_in']) + cp.matmul(h_post, self.W_rnn_effective)# + self.var_dict['b_rnn']
         V, w, h_out = run_adex(V, w, I, self.con_dict['adex'])

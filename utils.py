@@ -43,6 +43,21 @@ def apply_EI(var, ei):
         excitatory/inhibitory mask """
     return cp.matmul(relu(var), ei)
 
+def synaptic_plasticity(h_out, syn_x, syn_u, constants, use_stp, hidden_size):
+    """ If required, applies STP updates to the hidden state and STP
+        variables.  If not required, just ensures correct hidden shape. """
+
+    if use_stp:
+        syn_x += constants['alpha_std']*(1-syn_x) - syn_u*syn_x*h_out
+        syn_u += constants['alpha_stf']*(constants['U']-syn_x) - constants['U']*(1-syn_u)*h_out
+        syn_x = cp.minimum(1., relu(syn_x))
+        syn_u = cp.minimum(1., relu(syn_u))
+        h_post = syn_u*syn_x*h_out
+    else:
+        h_post = h_out*cp.ones([1,1,hidden_size])
+
+    return h_post, syn_x, syn_u
+
 
 def run_adex(V, w, I, constants):
 
