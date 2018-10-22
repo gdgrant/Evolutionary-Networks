@@ -1,5 +1,7 @@
 import numpy as np
 from scipy.stats import gamma
+from itertools import product
+
 print('\n--> Loading parameters...')
 
 global par
@@ -9,11 +11,11 @@ par = {
     'save_fn'               : 'testing_spiking',
     'network_type'          : 'spiking',
     'use_stp'               : True,
-    'use_latency'           : True,
+    'use_latency'           : False,
     'EI_prop'               : 0.8,
     'iters_per_output'      : 5,
 
-    'n_networks'            : 100,
+    'n_networks'            : 80,
     'n_hidden'              : 100,
     'n_output'              : 3,
 
@@ -31,9 +33,9 @@ par = {
     'noise_rnn_sd'          : 0.05,
     'noise_in_sd'           : 0.05,
 
-    'dt'                    : 20,
+    'dt'                    : 2,
     'membrane_constant'     : 100,
-    'max_latency'           : 40,
+    'max_latency'           : 10,
     'latency_gamma'         : 7.5,
 
     'dead_time'             : 100,
@@ -126,6 +128,10 @@ def update_dependencies():
         # TODO: use better truncation method for the distribution
         par['latency_matrix'] = np.int8(np.random.gamma(shape=par['latency_gamma'], scale=1., size=[par['n_networks'], par['n_hidden'], par['n_hidden']]))
         par['latency_matrix'] %= par['max_latency']
+
+        par['latency_mask'] = np.int8(np.zeros([par['max_latency'], par['n_networks'], par['n_hidden'], par['n_hidden']]))
+        for n, i, j in product(range(par['n_networks']), range(par['n_hidden']), range(par['n_hidden'])):
+            par['latency_mask'][par['latency_matrix'][n,i,j],n,i,j] = 1.
 
 
 update_dependencies()

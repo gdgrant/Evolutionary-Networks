@@ -25,7 +25,7 @@ class NetworkController:
         constant_names = ['alpha_neuron', 'noise_rnn', 'W_rnn_mask', \
             'mutation_rate', 'mutation_strength', 'cross_rate', 'EI_mask', 'loss_baseline']
         stp_constants = ['syn_x_init', 'syn_u_init', 'U', 'alpha_stf', 'alpha_std', 'dt_sec']
-        latency_constants = ['max_latency','latency_matrix']
+        latency_constants = ['max_latency', 'latency_mask']
 
         constant_names += stp_constants if par['use_stp'] else []
         constant_names += latency_constants if par['use_latency'] else []
@@ -55,11 +55,14 @@ class NetworkController:
         self.y = cp.zeros([par['num_time_steps'], par['n_networks'], par['batch_size'], par['n_output']], dtype=cp.float16)
         syn_x  = self.con_dict['syn_x_init'] * cp.ones([par['n_networks'],par['batch_size'],1], dtype=cp.float16)
         syn_u  = self.con_dict['syn_u_init'] * cp.ones([par['n_networks'],par['batch_size'],1], dtype=cp.float16)
-        h      = self.var_dict['h_init']     * cp.ones([par['n_networks'],par['batch_size'],1], dtype=cp.float16)
-        h_out  = cp.zeros([par['n_networks'],par['batch_size'],1], dtype=cp.float16)
-        h_latency = cp.zeros([par['max_latency'], par['n_networks'], par['batch_size'], par['n_hidden']], dtype=cp.float16)
+        h      = self.var_dict['h_init']     * cp.ones([par['n_networks'],par['batch_size'],par['n_hidden']], dtype=cp.float16)
+        h_out  = cp.zeros(h.shape, dtype=cp.float16)
+
+        if par['use_latency']:
+            self.h_out_t = cp.zeros([par['max_latency'], par['n_networks'], par['batch_size'], par['n_hidden']], dtype=cp.float16)
 
         self.W_rnn_effective = apply_EI(self.var_dict['W_rnn'], self.con_dict['EI_mask'])
+
 
         if par['network_type'] == 'rate_based':
             for t in range(par['num_time_steps']):
@@ -68,7 +71,9 @@ class NetworkController:
 
         elif par['network_type'] == 'spiking':
             for t in range(par['num_time_steps']):
-                h_out, h, syn_x, syn_u, h_latency = self.LIF_spiking_recurrent_cell(h_out, h, input_data[t], syn_x, syn_u, h_latency, t)
+
+                # Run recurrent cell
+                h_out, h, syn_x, syn_u = self.LIF_spiking_recurrent_cell(h_out, h, input_data[t], syn_x, syn_u, t)
                 self.y[t,...] = (1-self.con_dict['alpha_neuron'])*self.y[t-1,...] \
                               + self.con_dict['alpha_neuron']*(cp.matmul(h_out, self.var_dict['W_out']) + self.var_dict['b_out'])
 
@@ -88,15 +93,29 @@ class NetworkController:
 
         h = relu((1-self.con_dict['alpha_neuron'])*h \
             + self.con_dict['alpha_neuron']*(cp.matmul(rnn_input, self.var_dict['W_in']) \
-            + cp.matmul(h_post, self.W_rnn_effective) + self.var_dict['b_rnn']) + \
+            + self.rnn_matmul(h_post, self.W_rnn_effective) + self.var_dict['b_rnn']) + \
             + cp.random.normal(scale=self.con_dict['noise_rnn'], size=h.shape))
-
-
 
         return None, h, syn_x, syn_u
 
 
-    def LIF_spiking_recurrent_cell(self, h_out, h, rnn_input, syn_x, syn_u, h_latency, t):
+    def rnn_matmul(self, h_in, W_rnn, t):
+
+        if par['use_latency']:
+            self.h_out_t[t-1%self.con_dict['max_latency'],...] = 0.
+
+            W_rnn_latency = W_rnn[cp.newaxis,...] * self.con_dict['latency_mask']
+
+            self.h_out_t += cp.matmul(h_in, W_rnn_latency)
+
+            self.con_dict['latency_mask'] = cp.roll(self.con_dict['latency_mask'], shift=1, axis=0)
+
+            return self.h_out_t[t%self.con_dict['max_latency'],...]
+        else:
+            return cp.matmul(h_in, W_rnn)
+
+
+    def LIF_spiking_recurrent_cell(self, h_out, h, rnn_input, syn_x, syn_u, t):
         """ Process one time step of the hidden layer
             based on the previous state and the current input,
             using leaky integrate-and-fire spiking """
@@ -113,43 +132,13 @@ class NetworkController:
 
         h = (1-self.con_dict['alpha_neuron'])*h \
             + self.con_dict['alpha_neuron']*(cp.matmul(rnn_input, self.var_dict['W_in']) \
-            + cp.matmul(h_post, self.W_rnn_effective) + self.var_dict['b_rnn']) + \
+            + self.rnn_matmul(h_post, self.W_rnn_effective, t) + self.var_dict['b_rnn']) + \
             + cp.random.normal(scale=self.con_dict['noise_rnn'], size=h.shape)
-
-        if par['use_latency']:
-            # Modded indicates which index to store hidden activity to in the h_latency matrix because we aren't updating h_latency
-
-            ind = cp.ones([par['n_hidden'],1]) * t
-            modded = ((ind+self.con_dict['latency_matrix'])%par['max_latency']).astype(cp.int8)
-
-            print("h shape: {}".format(h.shape))
-            # print("n_hidden shape: {}".format(par['n_hidden'].shape))
-            print("h_latency shape: {}".format(h_latency.shape))
-            print("latency_matrix shape: {}".format(self.con_dict['latency_matrix'].shape))
-            print("modded[:,1,2] shape: {}".format(modded[:,1,2].shape))
-            # quit()
-
-            print("modded[:,1,2]: {}".format(modded[:,1,2]))
-            print("h_latency[modded[:,1,2],:,:,2].shape: {}".format(h_latency[modded[:,1,2],:,:,2].shape))
-            # print("h_latency[2,:,:,2]: {}".format(h_latency[2,:,:,2].shape))
-
-            # Determine hidden activity across time based on the latency information
-            for i in range(par['n_hidden']):
-                for j in range(par['n_hidden']):
-                    # h_latency[modded[:,i,j],:,:,j] += h[:,:,i]
-                    h_latency[modded[:,i,j],:,:,j] += h[:,:,i]
-                    print("{} {} {}".format(t,i,j), end="\r")
-
-
-
-            # get new hidden activity by indexing into h_latency and set h_latency at this timepoint to 0
-            h = h_latency[t%self.con_dict['max_latency']]
-            h_latency[t%self.con_dict['max_latency']] = 0
 
         h_out = cp.where(h > self.var_dict['threshold'], cp.ones_like(h_out), cp.zeros_like(h_out))
         h     = (1 - h_out)*h + h_out*self.var_dict['reset']
 
-        return h_out, h, syn_x, syn_u, h_latency
+        return h_out, h, syn_x, syn_u
 
 
     def judge_models(self, output_data, output_mask):
