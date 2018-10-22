@@ -144,10 +144,10 @@ class NetworkController:
         self.output_data = to_gpu(output_data)
         self.output_mask = to_gpu(output_mask)
 
-        self.loss = cross_entropy(self.output_mask, self.output_data, self.y) + 1.
+        self.loss = cross_entropy(self.output_mask, self.output_data, self.y)
 
-        self.freq_loss = cp.abs(self.h_out_mean-20) + 1.
-        self.loss *= self.freq_loss
+        self.freq_loss = 1e-3*cp.abs(self.h_out_mean-20)
+        self.loss += self.freq_loss
 
         self.loss[cp.where(cp.isnan(self.loss))] = self.con_dict['loss_baseline']
         self.rank = cp.argsort(self.loss.astype(cp.float32))
