@@ -13,15 +13,25 @@ else:
 ### GPU utilities
 
 def to_gpu(x):
-    """ Move numpy array to GPU """
-    return cp.asarray(x)
+    """ Move numpy arrays (or dicts of arrays) to GPU """
+    if type(x) == dict:
+        return {k:cp.asarray(a) for (k, a) in x.items()}
+    else:
+        return cp.asarray(x)
 
 def to_cpu(x):
-    """ Move cupy array to CPU """
+    """ Move cupy arrays (or dicts of arrays) to CPU """
     if len(sys.argv) > 1:
-        return cp.asnumpy(x.astype(cp.float32))
+        if type(x) == dict:
+            return {k:cp.asnumpy(a.astype(cp.float32)) for (k, a) in x.items()}
+        else:
+            return cp.asnumpy(x.astype(cp.float32))
     else:
-        return x.astype(cp.float32)
+        if type(x) == dict:
+            return {k:x.astype(cp.float32) for (k, a) in x.items()}
+        else:
+            return x.astype(cp.float32)
+
 
 
 ### Network functions
@@ -39,6 +49,55 @@ def apply_EI(var, ei):
     """ Applies EI masking to a square variable, according to the given
         excitatory/inhibitory mask """
     return cp.matmul(relu(var), ei)
+
+def synaptic_plasticity(h, syn_x, syn_u, constants, use_stp, hidden_size):
+    """ If required, applies STP updates to the hidden state and STP
+        variables.  If not required, just ensures correct hidden shape. """
+
+    if use_stp:
+        syn_x += constants['alpha_std']*(1-syn_x) - constants['stp_mod']*syn_u*syn_x*h
+        syn_u += constants['alpha_stf']*(constants['U']-syn_x) - constants['stp_mod']*constants['U']*(1-syn_u)*h
+        syn_x = cp.minimum(1., relu(syn_x))
+        syn_u = cp.minimum(1., relu(syn_u))
+        h_post = syn_u*syn_x*h
+    else:
+        h_post = h*cp.ones([1,1,hidden_size])
+
+    return h_post, syn_x, syn_u
+
+def run_adex(V, w, I, constants):
+    """ Run one step of the AdEx algorithm """
+    
+    I = I.astype(cp.float32)
+
+    V_next      = adex_membrane(V, w, I, constants)
+    w_next      = adex_adaptation(V, w, constants)
+    V, w, h_out = adex_spike(V_next, w_next, constants)
+
+    return V, w, h_out.astype(cp.float16)
+
+def adex_membrane(V, w, I, c):
+
+    term1 = I + c['g']*c['D']*cp.exp((V-c['V_T'])/c['D'])
+    term2 = w + c['g']*(V-c['E'])
+    return V + (c['dt']/c['C'])*(term1-term2)
+
+def adex_adaptation(V, w, c):
+
+    term1 = c['a']*(V-c['E'])
+    term2 = w
+    return w + (c['dt']/c['tau'])*(term1-term2)
+
+def adex_spike(V, w, c):
+
+    spike = V > c['Vth']
+    V = cp.where(spike, c['V_r'], V)
+    w = cp.where(spike, w + c['b'], w)
+
+    return V, w, spike
+
+
+### Judgement functions
 
 def cross_entropy(mask, target, output, eps=1e-7):
     """ Calculate the cross entropy loss for a rate-based network """

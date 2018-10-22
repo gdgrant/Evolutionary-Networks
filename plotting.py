@@ -13,8 +13,8 @@ def versus_plot():
     fig, ax = plt.subplots(1,2, sharex=True)
     plt.suptitle('Mean Accuracy Curve of Top 10% Evolved Models')
 
-    titles = ['Half-Precision v0', 'Half-Precision v1']
-    for fn, id, title in zip(['baseline_v0', 'baseline_v1'], [0,1], titles):
+    titles = ['Spiking MS=0.8', 'Spiking MS=1.0']
+    for fn, id, title in zip(['spiking_ms080_v0', 'spiking_ms100_v0'], [0,1], titles):
         data = pickle.load(open(savedir+fn+ext, 'rb'))
 
         iters    = data['iter']
@@ -40,6 +40,46 @@ def versus_plot():
 
         ax[id].set_title(title)
     plt.legend()
+    plt.show()
+
+
+def weight_distribution():
+    savedir = './savedir/'
+    ext     = '.pkl'
+    fig, ax = plt.subplots(2,2, sharex=True)
+    plt.suptitle('Histogrammed Weights of All Networks')
+
+    titles = ['Spiking MS=0.8']
+    for fn, id, title in zip(['spiking_ms080_v0'], [0], titles):
+        weights = pickle.load(open(savedir+fn+'_weights'+ext, 'rb'))
+
+        EI_vector    = np.ones(100, dtype=np.float16)
+        EI_vector[80:] *= -1
+        EI_mask      = np.diag(EI_vector)[np.newaxis,:,:]
+
+
+        W_rnn = weights['W_rnn']
+        W_rnn = np.maximum(0., W_rnn)
+        W_rnn = np.matmul(W_rnn, EI_mask)
+
+
+        ax[0,0].set_title('E --> E')
+        ax[0,0].hist(W_rnn[:,:80,:80].flatten(), bins=100)
+        ax[0,0].set_ylim(0,210000)
+
+        ax[0,1].set_title('I --> E')
+        ax[0,1].hist(W_rnn[:,:80,80:].flatten(), bins=100)
+        ax[0,1].set_ylim(0,60000)
+
+        ax[1,0].set_title('E --> I')
+        ax[1,0].hist(W_rnn[:,80:,:80].flatten(), bins=100)
+        ax[1,0].set_ylim(0,50000)
+
+        ax[1,1].set_title('I --> I')
+        ax[1,1].hist(W_rnn[:,80:,80:].flatten(), bins=100)
+        ax[1,1].set_ylim(0,20000)
+
+
     plt.show()
 
 
@@ -114,6 +154,14 @@ def sweep_plot():
     plt.show()
 
 
+def explore_spiking():
+    x = pickle.load(open('./savedir/h_out_array.pkl', 'rb'))[:,0,:,:]
+    plt.imshow(x[:,0,:])
+    plt.show()
+
+    return x
 
 
-sweep_plot()
+#sweep_plot()
+#x = explore_spiking()
+weight_distribution()
