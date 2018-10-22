@@ -5,7 +5,10 @@ from stimulus import Stimulus
 class NetworkController:
 
     def __init__(self):
-        pass
+        """ Load initial network ensemble state """
+
+        self.make_variables()
+        self.make_constants()
 
 
     def make_variables(self):
@@ -31,17 +34,11 @@ class NetworkController:
         for c in constant_names:
             self.con_dict[c] = to_gpu(par[c])
 
+
     def update_constant(self, con_name, con):
         """ Update a given constant in the model """
 
         self.con_dict[con_name] = to_gpu(con)
-
-
-    def update_mutation_constants(self, strength, rate):
-        """ Update the mutation strength and rate """
-
-        self.con_dict['mutation_strength'] = to_gpu(strength)
-        self.con_dict['mutation_rate']     = to_gpu(rate)
 
 
     def run_models(self, input_data):
@@ -204,12 +201,8 @@ class NetworkController:
 def main():
 
     print('\nStarting model run: {}'.format(par['save_fn']))
-
     control = NetworkController()
-    control.make_variables()
-    control.make_constants()
-
-    stim = Stimulus()
+    stim    = Stimulus()
 
     # Get loss baseline
     trial_info = stim.make_batch()
@@ -218,13 +211,7 @@ def main():
     control.update_constant('loss_baseline', loss_baseline)
 
     # Records
-    save_record = {
-        'iter'      : [],
-        'task_acc'  : [],
-        'full_acc'  : [],
-        'loss'      : [],
-        'mut_str'   : []
-    }
+    save_record = {'iter':[], 'task_acc':[], 'full_acc':[], 'loss':[], 'mut_str':[]}
 
     for i in range(par['iterations']):
 
@@ -233,44 +220,38 @@ def main():
         loss  = control.judge_models(trial_info['desired_output'], trial_info['train_mask'])[:par['num_survivors']]
 
         mutation_strength = par['mutation_strength']*(np.mean(loss)/loss_baseline)
-        if np.mean(loss)/loss_baseline < 0.025:
-            mutation_strength = par['mutation_strength']*np.mean(loss)/loss_baseline * (1/8)
-        elif np.mean(loss)/loss_baseline < 0.05:
-            mutation_strength = par['mutation_strength']*np.mean(loss)/loss_baseline * (1/4)
-        elif np.mean(loss)/loss_baseline < 0.1:
-            mutation_strength = par['mutation_strength']*np.mean(loss)/loss_baseline * (1/2)
-
         mutation_strength = np.minimum(par['mutation_strength'], mutation_strength)
-        control.update_mutation_constants(mutation_strength, par['mutation_rate'])
+        thresholds = [0.1, 0.05, 0.025, 0]
+        modifiers  = [1/2, 1/4, 1/8]
+        for t in range(len(thresholds))[:-1]:
+            if thresholds[t] > mutation_strength > thresholds[t+1]:
+                mutation_strength = par['mutation_strength']*np.mean(loss)/loss_baseline * modifiers[t]
+                break
+
+        control.update_constant('mutation_strength', mutation_strength)
         control.breed_models()
 
         if i%par['iters_per_output'] == 0:
             task_accuracy, full_accuracy = control.get_performance()
 
+            task_acc  = np.mean(task_accuracy[:par['num_survivors']])
+            full_acc  = np.mean(full_accuracy[:par['num_survivors']])
+            curr_loss = np.mean(loss[:par['num_survivors']])
+            spiking   = np.mean(h_out[:par['num_survivors']])*par['dt']*1000
+
             save_record['iter'].append(i)
-            save_record['task_acc'].append(np.mean(task_accuracy[:par['num_survivors']]))
-            save_record['full_acc'].append(np.mean(full_accuracy[:par['num_survivors']]))
-            save_record['loss'].append(np.mean(loss[:par['num_survivors']]))
+            save_record['task_acc'].append(task_acc)
+            save_record['full_acc'].append(full_acc)
+            save_record['loss'].append(curr_loss)
             save_record['mut_str'].append(mutation_strength)
+            save_record['spiking'].append(spiking)
             pickle.dump(save_record, open(par['save_dir']+par['save_fn']+'.pkl', 'wb'))
             if i%(10*par['iters_per_output']) == 0:
                 print('Saving weights for iteration {}...'.format(i))
                 pickle.dump(to_cpu(control.var_dict), open(par['save_dir']+par['save_fn']+'_weights.pkl', 'wb'))
 
-            h_out = np.mean(h_out[:par['num_survivors']])*par['dt']*1000
-
-            names = ['Iter', 'Loss', 'Task Acc', 'Full Acc', 'Mut Str', 'Spiking']
-            elements = [i, np.mean(loss[:par['num_survivors']]), np.mean(task_accuracy[:par['num_survivors']]), \
-                np.mean(full_accuracy[:par['num_survivors']]), mutation_strength, h_out]
-            status_string = ''
-            for n, e in zip(names, elements):
-                if n=='Spiking':
-                    status_string += ' {}: {:3.0f} Hz |'.format(n, e)
-                elif n == 'Iter':
-                    status_string += '{}: {:4} |'.format(n, e)
-                else:
-                    status_string += ' {}: {:5.3f} |'.format(n, e)
-
+            status_string = 'Iter: {:4} | Loss: {:5.3f} | Task/Full Acc: {:5.3f} / {:5.3f} | ' +
+                'Mut Str: {:5.3f} | Spiking: {:3.0f} Hz'.format(i, curr_loss, task_acc, full_acc, mutation_strength, spiking)
             print(status_string)
 
 if __name__ == '__main__':
