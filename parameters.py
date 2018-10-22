@@ -11,6 +11,7 @@ par = {
     'iters_per_output'      : 5,
 
     'EI_prop'               : 0.8,
+    'balance_EI'            : True,
     'exc_model'             : 'RS',
     'inh_model'             : 'cNA',
 
@@ -74,11 +75,16 @@ def update_dependencies():
     par['num_time_steps'] = par['trial_length'] // par['dt']
 
     par['n_input'] = par['num_motion_tuned']*par['num_receptive_fields'] + par['num_fix_tuned'] + par['num_rule_tuned']
+    par['n_EI'] = int(par['n_hidden']*par['EI_prop'])
 
     par['h_init_init']  = 0.1*np.ones([par['n_networks'],1,par['n_hidden']], dtype=np.float16)
     par['W_in_init']    = np.float16(np.random.gamma(shape=par['input_gamma'], scale=1., size=[par['n_networks'], par['n_input'], par['n_hidden']]))
     par['W_out_init']   = np.float16(np.random.gamma(shape=par['input_gamma'], scale=1., size=[par['n_networks'], par['n_hidden'], par['n_output']]))
     par['W_rnn_init']   = np.float16(np.random.gamma(shape=par['rnn_gamma'], scale=1., size=[par['n_networks'], par['n_hidden'], par['n_hidden']]))
+
+    if par['balance_EI']:
+        par['W_rnn_init'][:,par['n_EI']:,:par['n_EI']] = np.float16(np.random.gamma(shape=2*par['rnn_gamma'], scale=1., size=par['W_rnn_init'][:,par['n_EI']:,:par['n_EI']].shape))
+        par['W_rnn_init'][:,:par['n_EI'],par['n_EI']:] = np.float16(np.random.gamma(shape=2*par['rnn_gamma'], scale=1., size=par['W_rnn_init'][:,:par['n_EI'],par['n_EI']:].shape))
 
     par['b_rnn_init']   = np.zeros([par['n_networks'], 1, par['n_hidden']], dtype=np.float16)
     par['b_out_init']   = np.zeros([par['n_networks'], 1, par['n_output']], dtype=np.float16)
@@ -87,7 +93,7 @@ def update_dependencies():
     par['W_rnn_init']  *= par['W_rnn_mask']
 
     par['EI_vector']    = np.ones(par['n_hidden'], dtype=np.float16)
-    par['EI_vector'][int(par['n_hidden']*par['EI_prop']):] *= -1
+    par['EI_vector'][par['n_EI']:] *= -1
     par['EI_mask']      = np.diag(par['EI_vector'])[np.newaxis,:,:]
 
     par['threshold_init'] = 0.5*np.ones([par['n_networks'],1,par['n_hidden']], dtype=np.float16)
