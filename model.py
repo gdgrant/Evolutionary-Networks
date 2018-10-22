@@ -27,7 +27,7 @@ class NetworkController:
         """ Pull constants into GPU """
 
         constant_names = ['alpha_neuron', 'beta_neuron', 'noise_rnn', 'W_rnn_mask', \
-            'mutation_rate', 'mutation_strength', 'cross_rate', 'EI_mask', 'loss_baseline', 'dt']
+            'mutation_rate', 'mutation_strength', 'cross_rate', 'EI_mask', 'loss_baseline', 'dt', 'freq_cost']
         stp_constants  = ['syn_x_init', 'syn_u_init', 'U', 'alpha_stf', 'alpha_std', 'dt_sec']
         adex_constants = ['adex', 'w_init']
 
@@ -64,7 +64,7 @@ class NetworkController:
         spiking_means = cp.zeros([par['n_networks']])
         for t in range(par['num_time_steps']):
             if par['cell_type'] == 'rate':
-                _, h, syn_x, syn_u = self.recurrent_cell(None, h, input_data[t], syn_x, syn_u)
+                _, h, syn_x, syn_u = self.rate_recurrent_cell(None, h, input_data[t], syn_x, syn_u)
                 self.y[t,...] = cp.matmul(h, self.var_dict['W_out']) + self.var_dict['b_out']
 
             elif par['cell_type'] == 'LIF':
@@ -85,11 +85,11 @@ class NetworkController:
         return to_cpu(spiking_means)
 
 
-    def recurrent_cell(self, h_out, h, rnn_input, syn_x, syn_u):
+    def rate_recurrent_cell(self, h_out, h, rnn_input, syn_x, syn_u):
         """ Process one time step of the hidden layer
             based on the previous state and the current input """
 
-        h_post, syn_x, syn_u = synaptic_plasticity(h_out, syn_x, syn_u, \
+        h_post, syn_x, syn_u = synaptic_plasticity(h, syn_x, syn_u, \
             self.con_dict, par['use_stp'], par['n_hidden'])
 
         h = relu((1-self.con_dict['alpha_neuron'])*h \
@@ -160,7 +160,7 @@ class NetworkController:
 
         self.loss = cross_entropy_cpu(output_mask, output_data, to_cpu(self.y))
 
-        self.freq_loss = 1e-4*np.square(self.h_out_mean-20)
+        self.freq_loss = self.con_dict['freq_cost']*np.square(self.h_out_mean-20)
         self.loss += self.freq_loss
 
         self.loss[np.where(np.isnan(self.loss))] = self.con_dict['loss_baseline']

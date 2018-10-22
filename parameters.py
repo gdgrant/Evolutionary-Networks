@@ -47,6 +47,8 @@ par = {
     'tau_fast'              : 200,
     'tau_slow'              : 1500,
 
+    'freq_cost'             : 1e-4,
+
     'survival_rate'         : 0.10,
     'mutation_rate'         : 0.25,
     'mutation_strength'     : 0.80,
