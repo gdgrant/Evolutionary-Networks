@@ -15,7 +15,7 @@ class NetworkController:
         """ Pull variables into GPU """
 
         var_names = ['W_in', 'W_out', 'W_rnn', 'b_rnn', 'b_out', 'h_init']
-        var_names += ['threshold', 'reset'] if par['network_type']=='spiking' else []
+        var_names += ['threshold', 'reset'] if par['cell_type']=='LIF' else []
         self.var_dict = {}
         for v in var_names:
             self.var_dict[v] = to_gpu(par[v+'_init'])/100.
@@ -47,11 +47,8 @@ class NetworkController:
         input_data = to_gpu(input_data)
 
         self.y = cp.zeros([par['num_time_steps'], par['n_networks'], par['batch_size'], par['n_output']], dtype=cp.float16)
-        if par['use_stp']:
-            syn_x  = self.con_dict['syn_x_init'] * cp.ones([par['n_networks'],par['batch_size'],1], dtype=cp.float16)
-            syn_u  = self.con_dict['syn_u_init'] * cp.ones([par['n_networks'],par['batch_size'],1], dtype=cp.float16)
-        else:
-            syn_x = syn_u = 0.
+        syn_x  = self.con_dict['syn_x_init'] * cp.ones([par['n_networks'],par['batch_size'],1], dtype=cp.float16) if par['use_stp'] else 0.
+        syn_u  = self.con_dict['syn_u_init'] * cp.ones([par['n_networks'],par['batch_size'],1], dtype=cp.float16) if par['use_stp'] else 0.
         h      = self.var_dict['h_init']     * cp.ones([par['n_networks'],par['batch_size'],1], dtype=cp.float16)
         h_out  = cp.zeros([par['n_networks'],par['batch_size'],1], dtype=cp.float16)
         if par['spiking_cell'] == 'adex':
@@ -60,30 +57,28 @@ class NetworkController:
 
         self.W_rnn_effective = apply_EI(self.var_dict['W_rnn'], self.con_dict['EI_mask'])
 
-        record = []
-        if par['network_type'] == 'rate_based':
-            for t in range(par['num_time_steps']):
+        spiking_means = cp.zeros([par['n_networks']])
+        for t in range(par['num_time_steps']):
+            if par['cell_type'] == 'rate':
                 _, h, syn_x, syn_u = self.recurrent_cell(None, h, input_data[t], syn_x, syn_u)
                 self.y[t,...] = cp.matmul(h, self.var_dict['W_out']) + self.var_dict['b_out']
 
-        elif par['network_type'] == 'spiking':
-            h_out_save = cp.zeros([par['n_networks']])
-            for t in range(par['num_time_steps']):
-                if par['spiking_cell'] == 'LIF':
-                    h_out, h, syn_x, syn_u = self.LIF_spiking_recurrent_cell(h_out, h, input_data[t], syn_x, syn_u)
-                elif par['spiking_cell'] == 'adex':
-                    h_out, h, w, syn_x, syn_u = self.AdEx_spiking_recurrent_cell(h_out, h, w, input_data[t], syn_x, syn_u)
-                #record.append(h_out)
-
+            elif par['cell_type'] == 'LIF':
+                h_out, h, syn_x, syn_u = self.LIF_spiking_recurrent_cell(h_out, h, input_data[t], syn_x, syn_u)
                 self.y[t,...] = (1-self.con_dict['beta_neuron'])*self.y[t-1,...] \
                               + self.con_dict['beta_neuron']*cp.matmul(h_out, self.var_dict['W_out'])# + self.var_dict['b_out']
-
                 self.y[t,...] = cp.minimum(relu(self.y[t,...]), 5)
 
-                h_out_save += cp.mean(h_out, axis=(1,2))/self.con_dict['dt']/par['num_time_steps']
-            self.h_out_mean = h_out_save
+            elif par['cell_type'] == 'adex':
+                h_out, h, w, syn_x, syn_u = self.AdEx_spiking_recurrent_cell(h_out, h, w, input_data[t], syn_x, syn_u)
+                self.y[t,...] = (1-self.con_dict['beta_neuron'])*self.y[t-1,...] \
+                              + self.con_dict['beta_neuron']*cp.matmul(h_out, self.var_dict['W_out'])# + self.var_dict['b_out']
+                self.y[t,...] = cp.minimum(relu(self.y[t,...]), 5)
 
-        return to_cpu(h_out_save)
+            spiking_means += cp.mean(h_out, axis=(1,2))/self.con_dict['dt']/par['num_time_steps']
+
+        self.h_out_mean = spiking_means
+        return to_cpu(spiking_means)
 
 
     def recurrent_cell(self, h_out, h, rnn_input, syn_x, syn_u):

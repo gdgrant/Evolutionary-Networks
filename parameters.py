@@ -6,12 +6,11 @@ par = {
 
     'save_dir'              : './savedir/',
     'save_fn'               : 'testing_spiking',
-    'network_type'          : 'spiking',
+    'cell_type'             : 'adex',    # 'rate', 'LIF', 'adex'
     'use_stp'               : True,
     'iters_per_output'      : 5,
 
     'EI_prop'               : 0.8,
-    'spiking_cell'          : 'adex',
     'exc_model'             : 'RS',
     'inh_model'             : 'cNA',
 
@@ -147,17 +146,6 @@ def update_dependencies():
         par['adex'][k0] = par_matrix
 
     par['w_init'] = par['adex']['b']
-
-
-
-    # PUSH ALL ADEX CONSTANTS TO GPU AS FLOAT16 FOR GPU COMPUTATION
-    # CHECK OVER RUN_ADEX IN UTILS TO MAKE SURE THAT'S ALL FINE
-
-    # IN THE ADEX RECURRENT CELL:
-    # SEND E PART OF NETWORK THROUGH WITH 'RS', SEND I PART OF NETWORK
-    #   THROUGH WITH 'cNA'.  THIS WILL TAKE CARE OF BOTH PARTS OF THE
-    #   ALGORITHM WITH MINIMAL FRUSTRATION
-
 
 
 update_dependencies()
