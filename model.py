@@ -28,7 +28,7 @@ class NetworkController:
 
         constant_names = ['alpha_neuron', 'beta_neuron', 'noise_rnn', 'W_rnn_mask', \
             'mutation_rate', 'mutation_strength', 'cross_rate', 'EI_mask', 'loss_baseline', 'dt', 'freq_cost']
-        stp_constants  = ['syn_x_init', 'syn_u_init', 'U', 'alpha_stf', 'alpha_std', 'dt_sec']
+        stp_constants  = ['syn_x_init', 'syn_u_init', 'U', 'alpha_stf', 'alpha_std', 'stp_mod']
         adex_constants = ['adex', 'w_init']
 
         constant_names += stp_constants  if par['use_stp'] else []

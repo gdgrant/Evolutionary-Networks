@@ -132,6 +132,8 @@ def update_dependencies():
             par['syn_x_init'][0,0,i+1] = 1
             par['syn_u_init'][0,0,i+1] = par['U'][0,0,i+1]
 
+        par['stp_mod'] = par['dt_sec'] if par['cell_type'] == 'rate' else 1.
+
 
     ### Adaptive-Expoential spiking
     if par['cell_type'] == 'adex':
