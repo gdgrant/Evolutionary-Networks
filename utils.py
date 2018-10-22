@@ -33,6 +33,7 @@ def to_cpu(x):
             return x.astype(cp.float32)
 
 
+
 ### Network functions
 
 def relu(x):
@@ -64,9 +65,9 @@ def synaptic_plasticity(h, syn_x, syn_u, constants, use_stp, hidden_size):
 
     return h_post, syn_x, syn_u
 
-
 def run_adex(V, w, I, constants):
-
+    """ Run one step of the AdEx algorithm """
+    
     I = I.astype(cp.float32)
 
     V_next      = adex_membrane(V, w, I, constants)
@@ -101,15 +102,6 @@ def adex_spike(V, w, c):
 def cross_entropy(mask, target, output, eps=1e-7):
     """ Calculate the cross entropy loss for a rate-based network """
     return -cp.mean(mask[...,cp.newaxis]*target*cp.log(softmax(output)+eps), axis=(0,2,3))
-
-def cross_entropy_cpu(mask, target, output, eps=1e-7):
-    """ Calculate the cross entropy loss for a rate-based network """
-    return -np.mean(mask[...,np.newaxis]*target*np.log(softmax(output)+eps), axis=(0,2,3))
-
-def spiking_cross_entropy(mask, target, output, eps=1e-7):
-    """ Calculate the cross entropy loss for a spiking network """
-
-    fixation_loss = mask[...,cp.newaxis]*(output[...,0]==1.)
 
 
 ### Optimization functions
