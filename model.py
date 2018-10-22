@@ -246,9 +246,6 @@ def main():
 
         if i%par['iters_per_output'] == 0:
             task_accuracy, full_accuracy = control.get_performance()
-            """pickle.dump(h_out, open('./savedir/h_out_array.pkl', 'wb'))
-            if i == 15:
-                quit('Cut out at fifteenth iteration.')"""
 
             save_record['iter'].append(i)
             save_record['task_acc'].append(np.mean(task_accuracy[:par['num_survivors']]))
@@ -256,20 +253,23 @@ def main():
             save_record['loss'].append(np.mean(loss[:par['num_survivors']]))
             save_record['mut_str'].append(mutation_strength)
             pickle.dump(save_record, open(par['save_dir']+par['save_fn']+'.pkl', 'wb'))
+            if i%(10*par['iters_per_output']) == 0:
+                print('Saving weights for iteration {}...'.format(i))
+                pickle.dump(to_cpu(control.var_dict), open(par['save_dir']+par['save_fn']+'_weights.pkl', 'wb'))
 
             h_out = np.mean(h_out[:par['num_survivors']])*par['dt']*1000
 
-            names = ['Iter', 'Loss', 'Task Acc', 'Full Acc', 'Mut. Str.', 'Spike Rate']
+            names = ['Iter', 'Loss', 'Task Acc', 'Full Acc', 'Mut Str', 'Spiking']
             elements = [i, np.mean(loss[:par['num_survivors']]), np.mean(task_accuracy[:par['num_survivors']]), \
                 np.mean(full_accuracy[:par['num_survivors']]), mutation_strength, h_out]
             status_string = ''
             for n, e in zip(names, elements):
-                if n=='Spike Rate':
-                    status_string += '{}: {:5.1f} Hz | '.format(n, e)
+                if n=='Spiking':
+                    status_string += ' {}: {:3.0f} Hz |'.format(n, e)
                 elif n == 'Iter':
-                    status_string += '{}: {:4} | '.format(n, e)
+                    status_string += '{}: {:4} |'.format(n, e)
                 else:
-                    status_string += '{}: {:5.3f} | '.format(n, e)
+                    status_string += ' {}: {:5.3f} |'.format(n, e)
 
             print(status_string)
 
