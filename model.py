@@ -17,9 +17,10 @@ class NetworkController:
 
         var_names = ['W_in', 'W_out', 'W_rnn', 'b_rnn', 'b_out', 'h_init']
         var_names += ['threshold', 'reset'] if par['cell_type']=='LIF' else []
+        modulator = 500. if par['cell_type'] == 'adex' else 1.
         self.var_dict = {}
         for v in var_names:
-            self.var_dict[v] = to_gpu(par[v+'_init'])/100.
+            self.var_dict[v] = to_gpu(par[v+'_init'])/modulator
 
 
     def make_constants(self):
@@ -27,10 +28,12 @@ class NetworkController:
 
         constant_names = ['alpha_neuron', 'beta_neuron', 'noise_rnn', 'W_rnn_mask', \
             'mutation_rate', 'mutation_strength', 'cross_rate', 'EI_mask', 'loss_baseline', 'dt']
-        stp_constants = ['syn_x_init', 'syn_u_init', 'U', 'alpha_stf', 'alpha_std', 'dt_sec']
+        stp_constants  = ['syn_x_init', 'syn_u_init', 'U', 'alpha_stf', 'alpha_std', 'dt_sec']
+        adex_constants = ['adex', 'w_init']
 
-        constant_names += stp_constants if par['use_stp'] else []
-        constant_names += ['adex', 'w_init'] if par['cell_type'] == 'adex' else []
+        constant_names += stp_constants  if par['use_stp'] else []
+        constant_names += adex_constants if par['cell_type'] == 'adex' else []
+
         self.con_dict = {}
         for c in constant_names:
             self.con_dict[c] = to_gpu(par[c])
@@ -247,8 +250,9 @@ def main():
                 pickle.dump(to_cpu(control.var_dict), open(par['save_dir']+par['save_fn']+'_weights.pkl', 'wb'))
 
             status_string = 'Iter: {:4} | Loss: {:5.3f} | Task/Full Acc: {:5.3f} / {:5.3f} | ' \
-                'Mut Str: {:5.3f} | Spiking: {:3.0f} Hz'.format(i, curr_loss, task_acc, full_acc, mutation_strength, spiking)
+                'Mut Str: {:6.4f} | Spiking: {:3.0f} Hz'.format(i, curr_loss, task_acc, full_acc, mutation_strength, spiking)
             print(status_string)
+
 
 if __name__ == '__main__':
     main()
