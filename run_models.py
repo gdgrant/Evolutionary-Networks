@@ -19,7 +19,7 @@ def cross_rate_sweep():
 
     updates = {
         'iterations'        : 1001,
-        'task'              : 'dms'
+        'task'              : 'dms',
         'n_hidden'          : 150,
     }
 
@@ -33,7 +33,7 @@ def mutation_strength_sweep():
 
     updates = {
         'iterations'        : 1001,
-        'task'              : 'dms'
+        'task'              : 'dms',
         'n_hidden'          : 150,
     }
 
@@ -43,7 +43,14 @@ def mutation_strength_sweep():
         try_model(updates)
 
 
-cross_rate_sweep()
+#cross_rate_sweep()
+mutation_strength_sweep()
+
+
+
+
+
+
 
 double_neurons = {
     'iterations'      : 10001,
