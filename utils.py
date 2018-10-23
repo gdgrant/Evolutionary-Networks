@@ -67,8 +67,8 @@ def synaptic_plasticity(h, syn_x, syn_u, constants, use_stp, hidden_size):
 
 def run_adex(V, w, I, constants):
     """ Run one step of the AdEx algorithm """
-    
-    I = I.astype(cp.float32)
+
+    I = I.astype(cp.float32)/constants['current_divider']
 
     V_next      = adex_membrane(V, w, I, constants)
     w_next      = adex_adaptation(V, w, constants)
@@ -90,6 +90,8 @@ def adex_adaptation(V, w, c):
 
 def adex_spike(V, w, c):
 
+    # Spike projects 0mV or 1 mV (nothing or unit value) to the network
+    # with the current parameters
     spike = V > c['Vth']
     V = cp.where(spike, c['V_r'], V)
     w = cp.where(spike, w + c['b'], w)

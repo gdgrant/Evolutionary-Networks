@@ -17,17 +17,17 @@ class NetworkController:
 
         var_names = ['W_in', 'W_out', 'W_rnn', 'b_rnn', 'b_out', 'h_init']
         var_names += ['threshold', 'reset'] if par['cell_type']=='LIF' else []
-        modulator = 500. if par['cell_type'] == 'adex' else 1.
         self.var_dict = {}
         for v in var_names:
-            self.var_dict[v] = to_gpu(par[v+'_init'])/modulator
+            self.var_dict[v] = to_gpu(par[v+'_init'])
 
 
     def make_constants(self):
         """ Pull constants into GPU """
 
         constant_names    = ['alpha_neuron', 'beta_neuron', 'noise_rnn', 'W_rnn_mask', \
-            'mutation_rate', 'mutation_strength', 'cross_rate', 'EI_mask', 'loss_baseline', 'dt', 'freq_cost']
+            'mutation_rate', 'mutation_strength', 'cross_rate', 'EI_mask', 'loss_baseline', \
+            'dt', 'freq_cost', 'freq_target', 'num_time_steps']
         stp_constants     = ['syn_x_init', 'syn_u_init', 'U', 'alpha_stf', 'alpha_std', 'stp_mod']
         adex_constants    = ['adex', 'w_init']
         latency_constants = ['max_latency', 'latency_mask']
@@ -65,7 +65,7 @@ class NetworkController:
 
         self.W_rnn_effective = apply_EI(self.var_dict['W_rnn'], self.con_dict['EI_mask'])
 
-        spiking_means = cp.zeros([par['n_networks']])
+        self.spiking_means = cp.zeros([par['n_networks']])
         for t in range(par['num_time_steps']):
             if par['cell_type'] == 'rate':
                 _, h, syn_x, syn_u = self.rate_recurrent_cell(None, h, input_data[t], syn_x, syn_u, t)
@@ -83,10 +83,9 @@ class NetworkController:
                               + self.con_dict['beta_neuron']*cp.matmul(h_out, self.var_dict['W_out'])# + self.var_dict['b_out']
                 self.y[t,...] = cp.minimum(relu(self.y[t,...]), 5)
 
-            spiking_means += cp.mean(h_out, axis=(1,2))/self.con_dict['dt']/par['num_time_steps']
+            self.spiking_means += cp.mean(h_out, axis=(1,2))*(1000/self.con_dict['num_time_steps'])
 
-        self.h_out_mean = spiking_means
-        return to_cpu(spiking_means)
+        return to_cpu(self.spiking_means)
 
 
     def rnn_matmul(self, h_in, W_rnn, t):
@@ -168,7 +167,7 @@ class NetworkController:
 
         self.loss = cross_entropy(self.output_mask, self.output_data, self.y)
 
-        self.freq_loss = 1e-3*cp.abs(self.h_out_mean-20)
+        self.freq_loss = self.con_dict['freq_cost']*cp.abs(self.spiking_means-self.con_dict['freq_target'])
         self.loss += self.freq_loss
 
         self.loss[cp.where(cp.isnan(self.loss))] = self.con_dict['loss_baseline']
@@ -223,7 +222,7 @@ def main():
     for i in range(par['iterations']):
 
         trial_info = stim.make_batch()
-        h_out = control.run_models(trial_info['neural_input'])
+        spike = control.run_models(trial_info['neural_input'])
         loss  = control.judge_models(trial_info['desired_output'], trial_info['train_mask'])[:par['num_survivors']]
 
         mutation_strength = par['mutation_strength']*(np.mean(loss)/loss_baseline)
@@ -244,7 +243,7 @@ def main():
             task_acc  = np.mean(task_accuracy[:par['num_survivors']])
             full_acc  = np.mean(full_accuracy[:par['num_survivors']])
             curr_loss = np.mean(loss[:par['num_survivors']])
-            spiking   = np.mean(h_out[:par['num_survivors']])*1000/par['dt']
+            spiking   = np.mean(spike[:par['num_survivors']])
 
             save_record['iter'].append(i)
             save_record['task_acc'].append(task_acc)

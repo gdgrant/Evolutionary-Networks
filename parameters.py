@@ -15,13 +15,14 @@ par = {
     'balance_EI'            : True,
     'exc_model'             : 'RS',
     'inh_model'             : 'cNA',
+    'current_divider'       : 3e6,
 
     'use_latency'           : True,
-    'latency_limit'         : 20,
-    'latency_gamma'         : 7.5,
+    'latency_min'           : 5,
+    'latency_max'           : 20,
 
-    'n_networks'            : 1000,
-    'n_hidden'              : 150,
+    'n_networks'            : 500,
+    'n_hidden'              : 100,
     'n_output'              : 3,
 
     'num_motion_tuned'      : 24,
@@ -52,7 +53,8 @@ par = {
     'tau_fast'              : 200,
     'tau_slow'              : 1500,
 
-    'freq_cost'             : 1e-4,
+    'freq_cost'             : 1e-3,
+    'freq_target'           : 0.,
 
     'survival_rate'         : 0.10,
     'mutation_rate'         : 0.25,
@@ -142,16 +144,20 @@ def update_dependencies():
 
     ### Adaptive-Expoential spiking
     if par['cell_type'] == 'adex':
+
+        # Note that voltages are in units of mV and currents
+        # are in units of mA.  When pulling from a table based in volts/amps,
+        # multiply E, V_T, D, b, V_r, and Vth by 1000
         par['cNA'] = {
-            'C'   : 59e-12,     'g'   : 2.9e-9,     'E'   : -62e-3,
-            'V_T' : -42e-3,     'D'   : 3e-3,       'a'   : 1.8e-9,
-            'tau' : 16e-3,      'b'   : 61e-12,     'V_r' : -54e-3,
-            'Vth' : 20e-3,      'dt'  : par['dt']/1000 }
+            'C'   : 59e-12,     'g'   : 2.9e-9,     'E'   : -62,
+            'V_T' : -42,        'D'   : 3,          'a'   : 1.8e-9,
+            'tau' : 16e-3,      'b'   : 61e-9,      'V_r' : -54,
+            'Vth' : 20,         'dt'  : par['dt']/1000 }
         par['RS']  = {
-            'C'   : 104e-12,    'g'   : 4.3e-9,     'E'   : -65e-3,
-            'V_T' : -52e-3,     'D'   : 0.8e-3,     'a'   : -0.8e-9,
-            'tau' : 88e-3,      'b'   : 65e-12,     'V_r' : -53e-3,
-            'Vth' : 20e-3,      'dt'  : par['dt']/1000 }
+            'C'   : 104e-12,    'g'   : 4.3e-9,     'E'   : -65,
+            'V_T' : -52,        'D'   : 0.8,        'a'   : -0.8e-9,
+            'tau' : 88e-3,      'b'   : 65e-9,      'V_r' : -53,
+            'Vth' : 20,         'dt'  : par['dt']/1000 }
 
         par['adex'] = {}
         for (k0, v_exc), (k1, v_inh) in zip(par[par['exc_model']].items(), par[par['inh_model']].items()):
@@ -162,15 +168,14 @@ def update_dependencies():
             par['adex'][k0] = par_matrix
 
         par['w_init'] = par['adex']['b']
+        par['adex']['current_divider'] = par['current_divider']
 
 
     ### Latency-based weights
     if par['use_latency']:
-        par['max_latency'] = par['latency_limit']//par['dt']
-
-        # TODO: use better truncation method for the distribution
-        par['latency_matrix'] = np.random.gamma(shape=par['latency_gamma'], scale=1., size=[par['n_hidden'], par['n_hidden']]).astype(np.int8)
-        par['latency_matrix'] %= par['max_latency']
+        par['max_latency'] = par['latency_max']//par['dt']
+        par['latency_matrix'] = np.random.uniform(par['latency_min']//par['dt'], par['latency_max']//par['dt'], \
+            size=[par['n_hidden'], par['n_hidden']]).astype(np.int8)
 
         par['latency_mask'] = np.zeros([par['max_latency'], par['n_hidden'], par['n_hidden']]).astype(np.float32)
         for i, j in product(range(par['n_hidden']), range(par['n_hidden'])):
