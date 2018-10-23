@@ -112,11 +112,11 @@ def cross(var1, var2, rate):
     """ Transmit some of var2 over to var1, based on the give rate """
     return cp.where(cp.random.choice([True,False], size=var1.shape, p=[rate, 1-rate]), var1, var2)
 
-def mutate(var, num, rate, scale):
+def mutate(var, num, rate, scale, epsilon):
     """ Mutates a given variable by a given rate and scale,
         generating as many offspring as num """
     mutation_mask = cp.random.random(size=[num, *var.shape], dtype=np.float32).astype(cp.float16)
-    mutation = cp.random.normal(scale=scale, size=[num, *var.shape])
+    mutation = cp.random.normal(loc=epsilon, scale=scale, size=[num, *var.shape])
     return var[cp.newaxis,...] + mutation*mutation_mask
 
 

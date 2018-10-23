@@ -21,6 +21,12 @@ par = {
     'latency_min'           : 5,
     'latency_max'           : 20,
 
+    'freq_cost'             : 1e-4,
+    'freq_target'           : 0.,
+
+    'use_weight_momentum'   : False,
+    'momentum_scale'        : 1.,
+
     'n_networks'            : 500,
     'n_hidden'              : 100,
     'n_output'              : 3,
@@ -52,9 +58,6 @@ par = {
 
     'tau_fast'              : 200,
     'tau_slow'              : 1500,
-
-    'freq_cost'             : 1e-3,
-    'freq_target'           : 0.,
 
     'survival_rate'         : 0.10,
     'mutation_rate'         : 0.25,

@@ -179,6 +179,12 @@ class NetworkController:
         return to_cpu(self.loss[self.rank])
 
 
+    def get_weights(self):
+        """ Return the mean of the surviving networks' weights (post-sort) """
+
+        return {name:np.mean(self.var_dict[name][:par['num_survivors'],...], axis=0) for name in self.var_dict.keys()}
+
+
     def get_performance(self):
         """ Only output accuracy when requested """
 
@@ -188,9 +194,11 @@ class NetworkController:
         return to_cpu(self.task_accuracy[self.rank]), to_cpu(self.full_accuracy[self.rank])
 
 
-    def breed_models(self):
+    def breed_models(self, epsilons=None):
         """ Based on the first s networks in the ensemble,
             produce more networks slightly mutated from those s """
+
+        epsilons = {k:0. for k in self.var_dict.keys()} if epsilons == None else to_gpu(epsilons)
 
         for s, name in itertools.product(range(par['num_survivors']), self.var_dict.keys()):
             indices = cp.arange(s+par['num_survivors'],par['n_networks'],par['num_survivors'])
@@ -199,7 +207,7 @@ class NetworkController:
             self.var_dict[name][indices,...] = cross(self.var_dict[name][s,...], self.var_dict[name][mate_id,...], \
                 par['cross_rate'])
             self.var_dict[name][indices,...] = mutate(self.var_dict[name][s,...], indices.shape[0], \
-                self.con_dict['mutation_rate'], self.con_dict['mutation_strength'])
+                self.con_dict['mutation_rate'], self.con_dict['mutation_strength'], epsilons[name])
 
         self.var_dict['W_rnn'] *= self.con_dict['W_rnn_mask']
 
@@ -215,6 +223,7 @@ def main():
     control.run_models(trial_info['neural_input'])
     loss_baseline = np.mean(control.judge_models(trial_info['desired_output'], trial_info['train_mask']))
     control.update_constant('loss_baseline', loss_baseline)
+    mean_weights_prev = control.get_weights()
 
     # Records
     save_record = {'iter':[], 'task_acc':[], 'full_acc':[], 'loss':[], 'mut_str':[], 'spiking':[]}
@@ -224,6 +233,7 @@ def main():
         trial_info = stim.make_batch()
         spike = control.run_models(trial_info['neural_input'])
         loss  = control.judge_models(trial_info['desired_output'], trial_info['train_mask'])[:par['num_survivors']]
+        mean_weights = control.get_weights()
 
         mutation_strength = par['mutation_strength']*(np.mean(loss)/loss_baseline)
         mutation_strength = np.minimum(par['mutation_strength'], mutation_strength)
@@ -234,8 +244,16 @@ def main():
                 mutation_strength = par['mutation_strength']*np.mean(loss)/loss_baseline * modifiers[t]
                 break
 
+        if par['use_weight_momentum']:
+            weight_momentum = {}
+            for name in mean_weights.keys():
+                weight_momentum[name] = par['momentum_scale'] * (mean_weights[name] - mean_weights_prev[name])[np.newaxis,...]
+            mean_weights_prev = mean_weights
+        else:
+            weight_momentum = None
+
         control.update_constant('mutation_strength', mutation_strength)
-        control.breed_models()
+        control.breed_models(epsilons=weight_momentum)
 
         if i%par['iters_per_output'] == 0:
             task_accuracy, full_accuracy = control.get_performance()
@@ -257,7 +275,7 @@ def main():
                 pickle.dump(to_cpu(control.var_dict), open(par['save_dir']+par['save_fn']+'_weights.pkl', 'wb'))
 
             status_string = 'Iter: {:4} | Loss: {:5.3f} | Task/Full Acc: {:5.3f} / {:5.3f} | ' \
-                'Mut Str: {:6.4f} | Spiking: {:3.0f} Hz'.format(i, curr_loss, task_acc, full_acc, mutation_strength, spiking)
+                'Mut Str: {:6.4f} | Spiking: {:5.2f} Hz'.format(i, curr_loss, task_acc, full_acc, mutation_strength, spiking)
             print(status_string)
 
 
