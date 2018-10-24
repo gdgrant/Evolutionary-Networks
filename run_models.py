@@ -44,7 +44,7 @@ def mutation_strength_sweep():
 
 
 #cross_rate_sweep()
-mutation_strength_sweep()
+#mutation_strength_sweep()
 
 
 
@@ -53,10 +53,12 @@ mutation_strength_sweep()
 
 
 double_neurons = {
-    'iterations'      : 10001,
-    'task'            : 'dms',
-    'save_fn'         : 'double_neurons_dms_v0',
-    'n_hidden'        : 200,
+    'iterations'        : 10001,
+    'task'              : 'dms',
+    'save_fn'           : 'double_neurons_dms_v1',
+    'n_hidden'          : 200,
+    'batch_size'        : 256,
+    'mutation_strength' : 0.40
 }
 
 output_constant = {
@@ -78,4 +80,4 @@ base_model = {
     'cross_rate'          : 0.
 }
 
-#try_model(base_model)
+try_model(double_neurons)

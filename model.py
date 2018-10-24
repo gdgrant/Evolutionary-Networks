@@ -271,7 +271,7 @@ def main():
             save_record['spiking'].append(spiking)
             pickle.dump(save_record, open(par['save_dir']+par['save_fn']+'.pkl', 'wb'))
             if i%(10*par['iters_per_output']) == 0:
-                print('Saving weights for iteration {}...'.format(i))
+                print('Saving weights for iteration {}... ({})'.format(i, par['save_fn']))
                 pickle.dump(to_cpu(control.var_dict), open(par['save_dir']+par['save_fn']+'_weights.pkl', 'wb'))
 
             status_string = 'Iter: {:4} | Loss: {:5.3f} | Task/Full Acc: {:5.3f} / {:5.3f} | ' \
