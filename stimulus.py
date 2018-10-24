@@ -90,7 +90,7 @@ class Stimulus:
     def oic(self):
 
         trial_info = {
-            'neural_input'      : 5*np.random.normal(0., par['noise_in'], size=[par['num_time_steps'], par['batch_size'], par['n_input']])+2,
+            'neural_input'      : np.random.normal(0., par['noise_in'], size=[par['num_time_steps'], par['batch_size'], par['n_input']]),
             'desired_output'    : np.zeros([par['num_time_steps'], par['batch_size'], par['n_output']], dtype=np.float16),
             'train_mask'        : np.ones([par['num_time_steps'], par['batch_size']], dtype=np.float16)
         }
