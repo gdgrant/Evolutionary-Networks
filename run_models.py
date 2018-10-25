@@ -61,6 +61,15 @@ double_neurons = {
     'mutation_strength' : 0.40
 }
 
+quad_neurons = {
+    'iterations'        : 10001,
+    'task'              : 'dms',
+    'save_fn'           : 'quad_neurons_dms_v1',
+    'n_hidden'          : 400,
+    'batch_size'        : 64,
+    'mutation_strength' : 0.40
+}
+
 output_constant = {
     'iterations'      : 10001,
     'task'            : 'dms',
@@ -71,13 +80,11 @@ output_constant = {
 base_model = {
     'iterations'          : 10001,
     'task'                : 'dms',
-    'save_fn'             : 'momentum_nocross_dms_v0',
-    'output_constant'     : 80,
+    'save_fn'             : 'standard_model_dms_v2',
     'use_weight_momentum' : True,
-    'momentum_scale'      : 1.,
-    'mutation_rate'       : 0.75,
-    'mutation_strength'   : 0.40,
-    'cross_rate'          : 0.
+    'n_hidden'            : 400,
+    'batch_size'          : 64,
+    'freq_cost'           : 1e-3,
 }
 
-try_model(double_neurons)
+try_model(base_model)

@@ -27,7 +27,7 @@ class NetworkController:
 
         constant_names    = ['alpha_neuron', 'beta_neuron', 'noise_rnn', 'W_rnn_mask', \
             'mutation_rate', 'mutation_strength', 'cross_rate', 'EI_mask', 'loss_baseline', \
-            'dt', 'freq_cost', 'freq_target', 'num_time_steps']
+            'dt', 'freq_cost', 'freq_target', 'num_time_steps', 'reciprocal_max', 'reciprocal_cost', 'reciprocal_threshold']
         stp_constants     = ['syn_x_init', 'syn_u_init', 'U', 'alpha_stf', 'alpha_std', 'stp_mod']
         adex_constants    = ['adex', 'w_init']
         latency_constants = ['max_latency', 'latency_mask']
@@ -165,10 +165,16 @@ class NetworkController:
         self.output_data = to_gpu(output_data)
         self.output_mask = to_gpu(output_mask)
 
-        self.loss = cross_entropy(self.output_mask, self.output_data, self.y)
+        self.task_loss = cross_entropy(self.output_mask, self.output_data, self.y)
 
         self.freq_loss = self.con_dict['freq_cost']*cp.abs(self.spiking_means-self.con_dict['freq_target'])
-        self.loss += self.freq_loss
+
+        weight_ref = self.var_dict['W_rnn'][:,:par['n_EI'],:par['n_EI']]
+        self.reciprocal_loss = cp.sum((weight_ref > self.con_dict['reciprocal_threshold']) \
+            * cp.transpose(weight_ref > self.con_dict['reciprocal_threshold'], [0,2,1]), axis=(1,2))
+        self.reciprocal_loss = -self.con_dict['reciprocal_cost']*cp.minimum(self.con_dict['reciprocal_max'], self.reciprocal_loss)
+
+        self.loss = self.task_loss + self.freq_loss + self.reciprocal_loss
 
         self.loss[cp.where(cp.isnan(self.loss))] = self.con_dict['loss_baseline']
         self.rank = cp.argsort(self.loss.astype(cp.float32))
@@ -179,10 +185,16 @@ class NetworkController:
         return to_cpu(self.loss[self.rank])
 
 
+    def get_losses(self):
+        """ Return the ranked loss for each loss type """
+        return to_cpu({'task':self.task_loss[self.rank], \
+            'freq':self.freq_loss[self.rank], 'reci':self.reciprocal_loss[self.rank]})
+
+
     def get_weights(self):
         """ Return the mean of the surviving networks' weights (post-sort) """
 
-        return {name:np.mean(self.var_dict[name][:par['num_survivors'],...], axis=0) for name in self.var_dict.keys()}
+        return to_cpu({name:np.mean(self.var_dict[name][:par['num_survivors'],...], axis=0) for name in self.var_dict.keys()})
 
 
     def get_performance(self):
@@ -202,10 +214,12 @@ class NetworkController:
 
         for s, name in itertools.product(range(par['num_survivors']), self.var_dict.keys()):
             indices = cp.arange(s+par['num_survivors'],par['n_networks'],par['num_survivors'])
-            mate_id = to_gpu(np.random.choice(np.setdiff1d(np.arange(par['num_survivors']), s)))
 
-            self.var_dict[name][indices,...] = cross(self.var_dict[name][s,...], self.var_dict[name][mate_id,...], \
-                par['cross_rate'])
+            if par['use_crossing']:
+                mate_id = to_gpu(np.random.choice(np.setdiff1d(np.arange(par['num_survivors']), s)))
+                self.var_dict[name][indices,...] = cross(self.var_dict[name][s,...], self.var_dict[name][mate_id,...], \
+                    par['cross_rate'])
+
             self.var_dict[name][indices,...] = mutate(self.var_dict[name][s,...], indices.shape[0], \
                 self.con_dict['mutation_rate'], self.con_dict['mutation_strength'], epsilons[name])
 
@@ -226,7 +240,8 @@ def main():
     mean_weights_prev = control.get_weights()
 
     # Records
-    save_record = {'iter':[], 'task_acc':[], 'full_acc':[], 'loss':[], 'mut_str':[], 'spiking':[]}
+    save_record = {'iter':[], 'task_acc':[], 'full_acc':[], 'top_task_acc':[], 'top_full_acc':[], 'loss':[], \
+        'mut_str':[], 'spiking':[], 'loss_factors':[]}
 
     for i in range(par['iterations']):
 
@@ -257,16 +272,25 @@ def main():
 
         if i%par['iters_per_output'] == 0:
             task_accuracy, full_accuracy = control.get_performance()
+            loss_dict = control.get_losses()
 
+            task_loss = np.mean(loss_dict['task'][:par['num_survivors']])
+            freq_loss = np.mean(loss_dict['freq'][:par['num_survivors']])
+            reci_loss = np.mean(loss_dict['reci'][:par['num_survivors']])
+            top_task_acc = task_accuracy.max()
+            top_full_acc = full_accuracy.max()
             task_acc  = np.mean(task_accuracy[:par['num_survivors']])
             full_acc  = np.mean(full_accuracy[:par['num_survivors']])
             curr_loss = np.mean(loss[:par['num_survivors']])
             spiking   = np.mean(spike[:par['num_survivors']])
 
             save_record['iter'].append(i)
+            save_record['top_task_acc'].append(top_task_acc)
+            save_record['top_full_acc'].append(top_full_acc)
             save_record['task_acc'].append(task_acc)
             save_record['full_acc'].append(full_acc)
             save_record['loss'].append(curr_loss)
+            save_record['loss_factors'].append(loss_dict)
             save_record['mut_str'].append(mutation_strength)
             save_record['spiking'].append(spiking)
             pickle.dump(save_record, open(par['save_dir']+par['save_fn']+'.pkl', 'wb'))
@@ -274,10 +298,14 @@ def main():
                 print('Saving weights for iteration {}... ({})'.format(i, par['save_fn']))
                 pickle.dump(to_cpu(control.var_dict), open(par['save_dir']+par['save_fn']+'_weights.pkl', 'wb'))
 
-            status_string = 'Iter: {:4} | Loss: {:5.3f} | Task/Full Acc: {:5.3f} / {:5.3f} | ' \
-                'Mut Str: {:6.4f} | Spiking: {:5.2f} Hz'.format(i, curr_loss, task_acc, full_acc, mutation_strength, spiking)
-            print(status_string)
 
+            status_stringA = 'Iter: {:4} | Task Loss: {:5.3f} | Freq Loss: {:5.3f} | Reci Loss: {:5.3f}'.format( \
+                i, task_loss, freq_loss, reci_loss)
+            status_stringB = ' '*11 + '| Full Loss: {:5.3f} | Mut Str: {:7.5f} | Spiking: {:5.2f} Hz'.format( \
+                curr_loss, mutation_strength, spiking)
+            status_stringC = ' '*11 + '| Top Acc (Task/Full): {:5.3f} / {:5.3f}  | Mean Acc (Task/Full): {:5.3f} / {:5.3f}'.format( \
+                top_task_acc, top_full_acc, task_acc, full_acc)
+            print(status_stringA + '\n' + status_stringB + '\n' + status_stringC)
 
 if __name__ == '__main__':
     main()

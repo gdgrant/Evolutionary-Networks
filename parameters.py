@@ -24,6 +24,10 @@ par = {
     'freq_cost'             : 1e-4,
     'freq_target'           : 0.,
 
+    'reciprocal_cost'       : 2.,
+    'reciprocal_threshold'  : 3.,
+    'reciprocal_max'        : 0.2,
+
     'use_weight_momentum'   : False,
     'momentum_scale'        : 1.,
 
@@ -62,9 +66,11 @@ par = {
     'survival_rate'         : 0.10,
     'mutation_rate'         : 0.25,
     'mutation_strength'     : 0.80,
-    'cross_rate'            : 0.25,
+    'cross_rate'            : 0.01,
 
-    'task'                  : 'oic',
+    'use_crossing'          : False,
+
+    'task'                  : 'dms',
     'kappa'                 : 2.0,
     'tuning_height'         : 20.0,
     'response_multiplier'   : 10.0,
