@@ -246,7 +246,7 @@ class NetworkController:
 
         Z = self.con_dict['ES_learning_rate']/(self.con_dict['n_networks']-1)/self.con_dict['ES_sigma']
         for name in self.var_dict.keys():
-            delta_var = cp.zeros_like(self.var_dict[name])
+            delta_var = cp.zeros_like(self.var_dict[name][0]).astype(cp.float16)
             for i in range(1, par['n_networks']):
                 epsilon = self.var_dict[name][i] - self.var_dict[name][0]
                 delta_var += Z * epsilon * self.loss[i]
@@ -254,8 +254,8 @@ class NetworkController:
 
         # breed new networks
         for name in self.var_dict.keys():
-            for i in range(1, par['n_networks'], 2):
-                epsilon = cp.random.normal(0, self.con_dict['ES_sigma'], size = self.var_dict[name][0])
+            for i in range(1, par['n_networks']-1, 2):
+                epsilon = cp.random.normal(0, self.con_dict['ES_sigma'], size=self.var_dict[name][0].shape).astype(cp.float16)
                 self.var_dict[name][i] = self.var_dict[name][0] + epsilon
                 self.var_dict[name][i+1] = self.var_dict[name][0] - epsilon
 
