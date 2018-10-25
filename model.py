@@ -170,7 +170,7 @@ class NetworkController:
         self.freq_loss = self.con_dict['freq_cost']*cp.abs(self.spiking_means-self.con_dict['freq_target'])
 
         weight_ref = self.var_dict['W_rnn'][:,:par['n_EI'],:par['n_EI']]
-        self.reciprocal_loss = cp.sum((weight_ref > self.con_dict['reciprocal_threshold']) \
+        self.reciprocal_loss = cp.mean((weight_ref > self.con_dict['reciprocal_threshold']) \
             * cp.transpose(weight_ref > self.con_dict['reciprocal_threshold'], [0,2,1]), axis=(1,2))
         self.reciprocal_loss = -self.con_dict['reciprocal_cost']*cp.minimum(self.con_dict['reciprocal_max'], self.reciprocal_loss)
 
