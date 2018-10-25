@@ -33,6 +33,10 @@ par = {
     'momentum_scale'        : 1.,
     'ES_learning_rate'      : 0.01,
     'ES_sigma'              : 0.05,
+    'adam_beta1'            : 0.9,
+    'adam_beta2'            : 0.999,
+    'adam_epsilon'          : 1e-8,
+
 
     'n_networks'            : 500,
     'n_hidden'              : 100,

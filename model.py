@@ -21,6 +21,23 @@ class NetworkController:
         for v in var_names:
             self.var_dict[v] = to_gpu(par[v+'_init'])
 
+        if par['learning_rate'] == 'ES':
+            # use the ADAM optimizer
+            self.make_adam_variables()
+
+
+    def make_adam_variables(self):
+
+        self.adam_par['beta1'] = to_gpu(par['adam_beta1'])
+        self.adam_par['beta2'] = to_gpu(par['adam_beta2'])
+        self.adam_par['epsilon'] = to_gpu(par['adam_epsilon'])
+        self.adam_par['t'] = to_gpu(0)
+
+        for v in self.var_dict.keys():
+            self.adam_par['m_' + v] = cp.zeros_like(self.var_dict[v].shape)
+            self.adam_par['v_' + v] = cp.zeros_like(self.var_dict[v].shape)
+
+
 
     def make_constants(self):
         """ Pull constants into GPU """
@@ -240,15 +257,24 @@ class NetworkController:
         the base network, in order to calculate the "gradient"
         """
 
+        self.adam_par['t'] += 1
+        learning_rate = self.con_dict['ES_learning_rate']/self.con_dict['ES_sigma']* \
+            cp.sqrt(1-self.adam_par['beta2']**self.adam_par['t'])/(1-self.adam_par['beta1']**self.adam_par['t'])
+
         if iteration == 0:
             for name in self.var_dict.keys():
                 self.var_dict[name] = self.var_dict[name][self.rank,...]
 
-        Z = self.con_dict['ES_learning_rate']/self.con_dict['ES_sigma']
         for name in self.var_dict.keys():
             grad_epsilon = self.var_dict[name][1:,...] - self.var_dict[name][0:1,...]
-            delta_var = grad_epsilon * self.loss[1:][:,cp.newaxis,cp.newaxis]
-            self.var_dict[name][0] -= Z * cp.mean(delta_var, axis=0)
+            delta_var = cp.mean(grad_epsilon * self.loss[1:][:,cp.newaxis,cp.newaxis], axis=0)
+
+            self.adam_par['m_' + name] = self.adam_par['beta1']*self.adam_par['m_' + name] + \
+                (1 - self.adam_par['beta1'])*delta_var
+            self.adam_par['v_' + name] = self.adam_par['beta2']*self.adam_par['v_' + name] + \
+                (1 - self.adam_par['beta2'])*delta_var*delta_var
+
+            self.var_dict[name][0] -= learning_rate * self.adam_par['m_' + name]/(self.adam_par['epsilon'] + cp.sqrt(elf.adam_par['v_' + name]))
 
             var_epsilon = cp.random.normal(0, self.con_dict['ES_sigma'], \
                 size=self.var_dict[name][1::2,...].shape).astype(cp.float16)
@@ -256,6 +282,7 @@ class NetworkController:
             self.var_dict[name][2::2] = self.var_dict[name][0:1,...] - var_epsilon
 
         self.var_dict['W_rnn'] *= self.con_dict['W_rnn_mask']
+
 
 
 def main():
