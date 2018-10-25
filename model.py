@@ -244,20 +244,16 @@ class NetworkController:
             for name in self.var_dict.keys():
                 self.var_dict[name] = self.var_dict[name][self.rank,...]
 
-        Z = self.con_dict['ES_learning_rate']/(self.con_dict['n_networks']-1)/self.con_dict['ES_sigma']
+        Z = self.con_dict['ES_learning_rate']/self.con_dict['ES_sigma']
         for name in self.var_dict.keys():
-            delta_var = cp.zeros_like(self.var_dict[name][0]).astype(cp.float16)
-            for i in range(1, par['n_networks']):
-                epsilon = self.var_dict[name][i] - self.var_dict[name][0]
-                delta_var += Z * epsilon * self.loss[i]
-            self.var_dict[name][0] += delta_var # applying the gradient to base network
+            grad_epsilon = self.var_dict[name][1:,...] - self.var_dict[name][0:1,...]
+            delta_var = grad_epsilon * self.loss[1:][:,cp.newaxis,cp.newaxis]
+            self.var_dict[name][0] -= Z * cp.mean(delta_var, axis=0)
 
-        # breed new networks
-        for name in self.var_dict.keys():
-            for i in range(1, par['n_networks']-1, 2):
-                epsilon = cp.random.normal(0, self.con_dict['ES_sigma'], size=self.var_dict[name][0].shape).astype(cp.float16)
-                self.var_dict[name][i] = self.var_dict[name][0] + epsilon
-                self.var_dict[name][i+1] = self.var_dict[name][0] - epsilon
+            var_epsilon = cp.random.normal(0, self.con_dict['ES_sigma'], \
+                size=self.var_dict[name][1::2,...].shape).astype(cp.float16)
+            self.var_dict[name][1::2] = self.var_dict[name][0:1,...] + var_epsilon
+            self.var_dict[name][2::2] = self.var_dict[name][0:1,...] - var_epsilon
 
         self.var_dict['W_rnn'] *= self.con_dict['W_rnn_mask']
 

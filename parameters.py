@@ -32,7 +32,7 @@ par = {
     'use_weight_momentum'   : False,
     'momentum_scale'        : 1.,
     'ES_learning_rate'      : 0.01,
-    'ES_sigma'              : 0.5,
+    'ES_sigma'              : 0.05,
 
     'n_networks'            : 500,
     'n_hidden'              : 100,
@@ -94,7 +94,7 @@ def update_dependencies():
 
     if par['learning_method'] == 'ES':
         # ensure that n_networks is odd
-        par['n_networks'] = par['n_networks'] + 1 if par['n_networks']%2==1 else par['n_networks']
+        par['n_networks'] = par['n_networks'] + 1 if par['n_networks']%2==0 else par['n_networks']
 
     par['trial_length'] = par['dead_time'] + par['fix_time'] + +par['sample_time'] + par['delay_time'] + par['test_time']
     par['num_time_steps'] = par['trial_length'] // par['dt']

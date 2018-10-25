@@ -89,14 +89,21 @@ base_model = {
 
 evo_model = {
     'iterations'          : 10001,
+    'cell_type'           : 'rate',
+    'membrane_constant'   : 100,
     'task'                : 'dms',
     'learning_method'     : 'ES',
-    'ES_learning_rate'    : 0.01,
-    'ES_sigma'            : 0.5,
+    'ES_learning_rate'    : 0.0001,
+    'ES_sigma'            : 0.01,
     'save_fn'             : 'evo_model_dms_v0',
-    'n_hidden'            : 400,
-    'batch_size'          : 64,
-    'freq_cost'           : 1e-3
+    'n_hidden'            : 100,
+    'dt'                  : 20,
+    'use_latency'         : False,
+    'output_constant'     : 20,
+    'batch_size'          : 256,
+    'freq_cost'           : 1e-3,
+    'freq_cost'           : 0.,
+    'n_networks'          : 5001,
 }
 
 try_model(evo_model)
