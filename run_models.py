@@ -87,4 +87,16 @@ base_model = {
     'freq_cost'           : 1e-3,
 }
 
-try_model(base_model)
+evo_model = {
+    'iterations'          : 10001,
+    'task'                : 'dms',
+    'learning_method'     : 'ES',
+    'ES_learning_rate'    : 0.01,
+    'ES_sigma'            : 0.5,
+    'save_fn'             : 'evo_model_dms_v0',
+    'n_hidden'            : 400,
+    'batch_size'          : 64,
+    'freq_cost'           : 1e-3
+}
+
+try_model(evo_model)

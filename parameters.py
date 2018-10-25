@@ -10,7 +10,7 @@ par = {
     'cell_type'             : 'adex',    # 'rate', 'LIF', 'adex'
     'use_stp'               : True,
     'iters_per_output'      : 5,
-    'learning_method'       : 'ES', # Eolvutuionary search = 'EA', Genetic algorithm = 'GA'
+    'learning_method'       : 'GA', # Evo search = 'ES', Genetic algorithm = 'GA'
 
     'EI_prop'               : 0.8,
     'balance_EI'            : True,
@@ -31,7 +31,7 @@ par = {
 
     'use_weight_momentum'   : False,
     'momentum_scale'        : 1.,
-    'ES_learning_rate'      : 0.01, 
+    'ES_learning_rate'      : 0.01,
     'ES_sigma'              : 0.5,
 
     'n_networks'            : 500,

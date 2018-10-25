@@ -29,17 +29,15 @@ class NetworkController:
             'mutation_rate', 'mutation_strength', 'cross_rate', 'EI_mask', 'loss_baseline', \
             'dt', 'freq_cost', 'freq_target', 'num_time_steps', 'reciprocal_max', 'reciprocal_cost', 'reciprocal_threshold']
 
-        if par['learning_method'] == 'ES':
-            constant_names.append('ES_learning_rate')
-            constant_names.append('ES_sigma')
-
         stp_constants     = ['syn_x_init', 'syn_u_init', 'U', 'alpha_stf', 'alpha_std', 'stp_mod']
         adex_constants    = ['adex', 'w_init']
         latency_constants = ['max_latency', 'latency_mask']
+        evo_constants     = ['ES_learning_rate', 'ES_sigma', 'n_networks']
 
         constant_names += stp_constants  if par['use_stp'] else []
         constant_names += adex_constants if par['cell_type'] == 'adex' else []
         constant_names += latency_constants if par['use_latency'] else []
+        constant_names += evo_constants if par['learning_method'] == 'ES' else []
 
         self.con_dict = {}
         for c in constant_names:
@@ -246,7 +244,7 @@ class NetworkController:
             for name in self.var_dict.keys():
                 self.var_dict[name] = self.var_dict[name][self.rank,...]
 
-        Z = par['ES_learning_rate']/(par['n_networks']-1)/par['ES_sigma']
+        Z = self.con_dict['ES_learning_rate']/(self.con_dict['n_networks']-1)/self.con_dict['ES_sigma']
         for name in self.var_dict.keys():
             delta_var = cp.zeros_like(self.var_dict[name])
             for i in range(1, par['n_networks']):
@@ -257,7 +255,7 @@ class NetworkController:
         # breed new networks
         for name in self.var_dict.keys():
             for i in range(1, par['n_networks'], 2):
-                epsilon = cp.random.normal(0, par['ES_sigma'], size = self.var_dict[name][0])
+                epsilon = cp.random.normal(0, self.con_dict['ES_sigma'], size = self.var_dict[name][0])
                 self.var_dict[name][i] = self.var_dict[name][0] + epsilon
                 self.var_dict[name][i+1] = self.var_dict[name][0] - epsilon
 
@@ -311,7 +309,7 @@ def main():
         elif par['learning_method'] == 'ES':
             control.breed_models_evo_search(i)
         else:
-            print('Unknown learning method!')
+            raise Exception('Unknown learning method!')
 
         if i%par['iters_per_output'] == 0:
             task_accuracy, full_accuracy = control.get_performance()
