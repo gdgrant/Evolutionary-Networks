@@ -37,6 +37,12 @@ class Stimulus:
             ax[0,1].imshow(trial_info['desired_output'][:,0,:].astype(np.float32), aspect='auto', clim=[0,1])
             ax[0,2].imshow(trial_info['train_mask'][:,0,np.newaxis].astype(np.float32), aspect='auto', clim=[0,1])
 
+            ax[0,0].set_xlabel('Neurons')
+            ax[0,0].set_ylabel('Time')
+            ax[0,0].set_title('Input')
+            ax[0,1].set_title('Target')
+            ax[0,2].set_title('Mask')
+
         trial_info['neural_input'] = np.where(trial_info['neural_input']/1000*par['dt'] > np.random.rand(*trial_info['neural_input'].shape), \
             np.ones_like(trial_info['neural_input']), np.zeros_like(trial_info['neural_input']))
 
