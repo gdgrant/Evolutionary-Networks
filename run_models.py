@@ -103,6 +103,9 @@ evo_model = {
     'batch_size'          : 256,
     'freq_cost'           : 1e-3,
     'freq_cost'           : 0.,
+    'reciprocal_cost'     : 0.,
+    'tuning_height'       : 4.,
+    'response_multiplier' : 4.,
     'n_networks'          : 5001,
 }
 
