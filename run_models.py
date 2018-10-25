@@ -88,7 +88,7 @@ base_model = {
 }
 
 evo_model = {
-    'iterations'          : 10001,
+    'iterations'          : 201,
     'cell_type'           : 'rate',
     'membrane_constant'   : 100,
     'task'                : 'dms',
@@ -109,4 +109,41 @@ evo_model = {
     'n_networks'          : 5001,
 }
 
+evo_model_adex = {
+    'iterations'          : 51,
+    'task'                : 'dms',
+    'learning_method'     : 'ES',
+    'ES_learning_rate'    : 0.0001,
+    'ES_sigma'            : 0.01,
+    'save_fn'             : 'evo_model_dms_v0',
+    'n_hidden'            : 100,
+    'batch_size'          : 128,
+    'freq_cost'           : 1e-3,
+    'n_networks'          : 2001,
+}
+
+
+def evo_model_sweep():
+    updates = evo_model_adex
+
+    lr = [1e-4, 1e-3, 1e-2]
+    es = [1e-3, 1e-2, 1e-1]
+
+    from itertools import product
+
+    for j in range(5):
+        for (il, l), (ie, e) in product(enumerate(lr), enumerate(es)):
+            updates['ES_learning_rate'] = l
+            updates['ES_sigma']         = e
+
+            updates['save_fn'] = 'evo_dms_adex_lr{}_es{}_v{}'.format(il, ie, j)
+
+            try_model(updates)
+
+
+
+
+
+evo_model_sweep()
+quit()
 try_model(evo_model)

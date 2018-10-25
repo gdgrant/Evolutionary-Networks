@@ -7,8 +7,11 @@ class NetworkController:
     def __init__(self):
         """ Load initial network ensemble state """
 
-        self.make_variables()
         self.make_constants()
+        self.make_variables()
+        if par['learning_method'] == 'ES':
+            # use the ADAM optimizer
+            self.make_adam_variables()
         self.size_ref = cp.ones([par['n_networks'],par['batch_size'],par['n_hidden']], dtype=cp.float16)
 
 
@@ -21,21 +24,18 @@ class NetworkController:
         for v in var_names:
             self.var_dict[v] = to_gpu(par[v+'_init'])
 
-        if par['learning_rate'] == 'ES':
-            # use the ADAM optimizer
-            self.make_adam_variables()
-
 
     def make_adam_variables(self):
 
+        self.adam_par = {}
         self.adam_par['beta1'] = to_gpu(par['adam_beta1'])
         self.adam_par['beta2'] = to_gpu(par['adam_beta2'])
         self.adam_par['epsilon'] = to_gpu(par['adam_epsilon'])
         self.adam_par['t'] = to_gpu(0)
 
         for v in self.var_dict.keys():
-            self.adam_par['m_' + v] = cp.zeros_like(self.var_dict[v].shape)
-            self.adam_par['v_' + v] = cp.zeros_like(self.var_dict[v].shape)
+            self.adam_par['m_' + v] = cp.zeros_like(self.var_dict[v][0])
+            self.adam_par['v_' + v] = cp.zeros_like(self.var_dict[v][0])
 
 
 
@@ -91,11 +91,15 @@ class NetworkController:
                 _, h, syn_x, syn_u = self.rate_recurrent_cell(None, h, input_data[t], syn_x, syn_u, t)
                 self.y[t,...] = cp.matmul(h, self.var_dict['W_out']) + self.var_dict['b_out']
 
+                self.spiking_means += cp.mean(h, axis=(1,2))/self.con_dict['num_time_steps']
+
             elif par['cell_type'] == 'LIF':
                 h_out, h, syn_x, syn_u = self.LIF_spiking_recurrent_cell(h_out, h, input_data[t], syn_x, syn_u, t)
                 self.y[t,...] = (1-self.con_dict['beta_neuron'])*self.y[t-1,...] \
                               + self.con_dict['beta_neuron']*cp.matmul(h_out, self.var_dict['W_out'])# + self.var_dict['b_out']
                 self.y[t,...] = cp.minimum(relu(self.y[t,...]), 5)
+
+                self.spiking_means += cp.mean(h_out, axis=(1,2))*(1000/self.con_dict['num_time_steps'])
 
             elif par['cell_type'] == 'adex':
                 h_out, h, w, syn_x, syn_u = self.AdEx_spiking_recurrent_cell(h_out, h, w, input_data[t], syn_x, syn_u, t)
@@ -103,7 +107,7 @@ class NetworkController:
                               + self.con_dict['beta_neuron']*cp.matmul(h_out, self.var_dict['W_out'])# + self.var_dict['b_out']
                 self.y[t,...] = cp.minimum(relu(self.y[t,...]), 5)
 
-            self.spiking_means += cp.mean(h_out, axis=(1,2))*(1000/self.con_dict['num_time_steps'])
+                self.spiking_means += cp.mean(h_out, axis=(1,2))*(1000/self.con_dict['num_time_steps'])
 
         return to_cpu(self.spiking_means)
 
@@ -258,7 +262,7 @@ class NetworkController:
         """
 
         self.adam_par['t'] += 1
-        learning_rate = self.con_dict['ES_learning_rate']/self.con_dict['ES_sigma']* \
+        learning_rate = (self.con_dict['ES_learning_rate']/self.con_dict['ES_sigma'])* \
             cp.sqrt(1-self.adam_par['beta2']**self.adam_par['t'])/(1-self.adam_par['beta1']**self.adam_par['t'])
 
         if iteration == 0:
@@ -274,7 +278,8 @@ class NetworkController:
             self.adam_par['v_' + name] = self.adam_par['beta2']*self.adam_par['v_' + name] + \
                 (1 - self.adam_par['beta2'])*delta_var*delta_var
 
-            self.var_dict[name][0] -= learning_rate * self.adam_par['m_' + name]/(self.adam_par['epsilon'] + cp.sqrt(elf.adam_par['v_' + name]))
+            self.var_dict[name][0] -= learning_rate * self.adam_par['m_' + name]/(self.adam_par['epsilon'] + \
+                cp.sqrt(self.adam_par['v_' + name]))
 
             var_epsilon = cp.random.normal(0, self.con_dict['ES_sigma'], \
                 size=self.var_dict[name][1::2,...].shape).astype(cp.float16)
