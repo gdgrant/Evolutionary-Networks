@@ -10,6 +10,7 @@ par = {
     'cell_type'             : 'adex',    # 'rate', 'LIF', 'adex'
     'use_stp'               : True,
     'iters_per_output'      : 5,
+    'learning_method'       : 'ES', # Eolvutuionary search = 'EA', Genetic algorithm = 'GA'
 
     'EI_prop'               : 0.8,
     'balance_EI'            : True,
@@ -30,6 +31,8 @@ par = {
 
     'use_weight_momentum'   : False,
     'momentum_scale'        : 1.,
+    'ES_learning_rate'      : 0.01, 
+    'ES_sigma'              : 0.5,
 
     'n_networks'            : 500,
     'n_hidden'              : 100,
@@ -88,6 +91,10 @@ def update_parameters(updates):
 
 
 def update_dependencies():
+
+    if par['learning_method'] == 'ES':
+        # ensure that n_networks is odd
+        par['n_networks'] = par['n_networks'] + 1 if par['n_networks']%2==1 else par['n_networks']
 
     par['trial_length'] = par['dead_time'] + par['fix_time'] + +par['sample_time'] + par['delay_time'] + par['test_time']
     par['num_time_steps'] = par['trial_length'] // par['dt']

@@ -28,6 +28,11 @@ class NetworkController:
         constant_names    = ['alpha_neuron', 'beta_neuron', 'noise_rnn', 'W_rnn_mask', \
             'mutation_rate', 'mutation_strength', 'cross_rate', 'EI_mask', 'loss_baseline', \
             'dt', 'freq_cost', 'freq_target', 'num_time_steps', 'reciprocal_max', 'reciprocal_cost', 'reciprocal_threshold']
+
+        if par['learning_method'] == 'ES':
+            constant_names.append('ES_learning_rate')
+            constant_names.append('ES_sigma')
+
         stp_constants     = ['syn_x_init', 'syn_u_init', 'U', 'alpha_stf', 'alpha_std', 'stp_mod']
         adex_constants    = ['adex', 'w_init']
         latency_constants = ['max_latency', 'latency_mask']
@@ -179,8 +184,9 @@ class NetworkController:
         self.loss[cp.where(cp.isnan(self.loss))] = self.con_dict['loss_baseline']
         self.rank = cp.argsort(self.loss.astype(cp.float32))
 
-        for name in self.var_dict.keys():
-            self.var_dict[name] = self.var_dict[name][self.rank,...]
+        if par['learning_method'] == 'GA':
+            for name in self.var_dict.keys():
+                self.var_dict[name] = self.var_dict[name][self.rank,...]
 
         return to_cpu(self.loss[self.rank])
 
@@ -222,6 +228,38 @@ class NetworkController:
 
             self.var_dict[name][indices,...] = mutate(self.var_dict[name][s,...], indices.shape[0], \
                 self.con_dict['mutation_rate'], self.con_dict['mutation_strength'], epsilons[name])
+
+        self.var_dict['W_rnn'] *= self.con_dict['W_rnn_mask']
+
+    def breed_models_evo_search(self, iteration):
+
+        """
+        We calculate the gradient from the previous run, and then adjust the base network parameters
+
+        self.var_dict[name][0] is considered our base network, whose parameters we will
+        adjust with evolutionary search
+        self.var_dict[name][1 thru N] are used to calculate the loss in a region nearby
+        the base network, in order to calculate the "gradient"
+        """
+
+        if iteration == 0:
+            for name in self.var_dict.keys():
+                self.var_dict[name] = self.var_dict[name][self.rank,...]
+
+        Z = par['ES_learning_rate']/(par['n_networks']-1)/par['ES_sigma']
+        for name in self.var_dict.keys():
+            delta_var = cp.zeros_like(self.var_dict[name])
+            for i in range(1, par['n_networks']):
+                epsilon = self.var_dict[name][i] - self.var_dict[name][0]
+                delta_var += Z * epsilon * self.loss[i]
+            self.var_dict[name][0] += delta_var # applying the gradient to base network
+
+        # breed new networks
+        for name in self.var_dict.keys():
+            for i in range(1, par['n_networks'], 2):
+                epsilon = cp.random.normal(0, par['ES_sigma'], size = self.var_dict[name][0])
+                self.var_dict[name][i] = self.var_dict[name][0] + epsilon
+                self.var_dict[name][i+1] = self.var_dict[name][0] - epsilon
 
         self.var_dict['W_rnn'] *= self.con_dict['W_rnn_mask']
 
@@ -268,7 +306,12 @@ def main():
             weight_momentum = None
 
         control.update_constant('mutation_strength', mutation_strength)
-        control.breed_models(epsilons=weight_momentum)
+        if par['learning_method'] == 'GA':
+            control.breed_models(epsilons=weight_momentum)
+        elif par['learning_method'] == 'ES':
+            control.breed_models_evo_search(i)
+        else:
+            print('Unknown learning method!')
 
         if i%par['iters_per_output'] == 0:
             task_accuracy, full_accuracy = control.get_performance()
