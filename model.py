@@ -265,26 +265,36 @@ class NetworkController:
         learning_rate = (self.con_dict['ES_learning_rate']/self.con_dict['ES_sigma'])* \
             cp.sqrt(1-self.adam_par['beta2']**self.adam_par['t'])/(1-self.adam_par['beta1']**self.adam_par['t'])
 
-        if iteration == 0:
-            for name in self.var_dict.keys():
-                self.var_dict[name] = self.var_dict[name][self.rank,...]
-
+        epsilons = cp.zeros([par['n_networks'],1])
         for name in self.var_dict.keys():
-            grad_epsilon = self.var_dict[name][1:,...] - self.var_dict[name][0:1,...]
-            delta_var = cp.mean(grad_epsilon * self.loss[1:][:,cp.newaxis,cp.newaxis], axis=0)
+            if iteration == 0:
+                self.var_dict[name] = self.var_dict[name][self.rank,...]
+            else:
+                grad_epsilon = self.var_dict[name][1:,...] - self.var_dict[name][0:1,...]
+                delta_var = cp.mean(grad_epsilon * self.loss[1:][:,cp.newaxis,cp.newaxis], axis=0)
 
-            self.adam_par['m_' + name] = self.adam_par['beta1']*self.adam_par['m_' + name] + \
-                (1 - self.adam_par['beta1'])*delta_var
-            self.adam_par['v_' + name] = self.adam_par['beta2']*self.adam_par['v_' + name] + \
-                (1 - self.adam_par['beta2'])*delta_var*delta_var
+                self.adam_par['m_' + name] = self.adam_par['beta1']*self.adam_par['m_' + name] + \
+                    (1 - self.adam_par['beta1'])*delta_var
+                self.adam_par['v_' + name] = self.adam_par['beta2']*self.adam_par['v_' + name] + \
+                    (1 - self.adam_par['beta2'])*delta_var*delta_var
 
-            self.var_dict[name][0] -= learning_rate * self.adam_par['m_' + name]/(self.adam_par['epsilon'] + \
-                cp.sqrt(self.adam_par['v_' + name]))
+                self.var_dict[name][0] -= learning_rate * self.adam_par['m_' + name]/(self.adam_par['epsilon'] + \
+                    cp.sqrt(self.adam_par['v_' + name]))
 
             var_epsilon = cp.random.normal(0, self.con_dict['ES_sigma'], \
                 size=self.var_dict[name][1::2,...].shape).astype(cp.float16)
             self.var_dict[name][1::2] = self.var_dict[name][0:1,...] + var_epsilon
             self.var_dict[name][2::2] = self.var_dict[name][0:1,...] - var_epsilon
+            var_epsilons = cp.zeros([par['n_networks'], *self.var_dict[name].shape], dtype=cp.float16)
+            print(var_epsilons[1::2].shape)
+            print(var_epsilon.shape)
+            quit()
+            var_epsilons[1::2] = var_epsilon
+            var_epsilons[2::2] = -var_epsilon
+            epsilons = cp.concatenate(epsilons, var_epsilons.flatten(), axis=1)
+
+        print(epsilons.shape)
+        quit()
 
         self.var_dict['W_rnn'] *= self.con_dict['W_rnn_mask']
 

@@ -106,7 +106,7 @@ evo_model = {
     'reciprocal_cost'     : 0.,
     'tuning_height'       : 4.,
     'response_multiplier' : 4.,
-    'n_networks'          : 5001,
+    'n_networks'          : 1001,
 }
 
 evo_model_adex = {
@@ -119,12 +119,12 @@ evo_model_adex = {
     'n_hidden'            : 100,
     'batch_size'          : 128,
     'freq_cost'           : 1e-3,
-    'n_networks'          : 2001,
+    'n_networks'          : 1001,
 }
 
 
 def evo_model_sweep():
-    updates = evo_model_adex
+    updates = evo_model
 
     lr = [1e-4, 1e-3, 1e-2]
     es = [1e-3, 1e-2, 1e-1]
