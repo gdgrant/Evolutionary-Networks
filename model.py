@@ -16,7 +16,7 @@ class NetworkController:
 
         self.size_ref = cp.ones([par['n_networks'],par['batch_size'],par['n_hidden']], dtype=cp.float16)
 
-        self.NNbs = NearestNeighbors(n_neighbors=10, algorithm='kd_tree', \
+        self.NNbs = NearestNeighbors(n_neighbors=5, algorithm='kd_tree', \
             radius=1.0, leaf_size=100)
 
 
@@ -273,16 +273,19 @@ class NetworkController:
         epsilons = cp.empty([par['n_networks']-1,1])
 
         t0 = time.time()
+        changing_flag = False
         for name in self.var_dict.keys():
             if iteration == 0:
                 self.var_dict[name] = self.var_dict[name][self.rank,...]
+                min = self.loss[0]
+                changing_flag = True
             else:
 
                 grad_epsilon = self.var_dict[name][1:,...] - self.var_dict[name][0:1,...]
                 NN_loss = cp.mean(self.loss[1:][self.NNb_inds], axis=1)
                 delta_var = cp.mean(grad_epsilon * NN_loss[:,cp.newaxis,cp.newaxis], axis=0)
 
-                if True:
+                if False:
                     self.adam_par['m_' + name] = self.adam_par['beta1']*self.adam_par['m_' + name] + \
                         (1 - self.adam_par['beta1'])*delta_var
                     self.adam_par['v_' + name] = self.adam_par['beta2']*self.adam_par['v_' + name] + \
@@ -292,8 +295,11 @@ class NetworkController:
                         cp.sqrt(self.adam_par['v_' + name]))
 
                 else:
-                    ind = cp.argmin(NN_loss)
-                    self.var_dict[name][0] = self.var_dict[name][1+ind:,...]
+                    min = NN_loss.min()
+                    if min < self.loss[0]:
+                        ind = cp.argmin(NN_loss)
+                        self.var_dict[name][0] = self.var_dict[name][1+ind,...]
+                        changing_flag = True
 
             var_epsilon = cp.random.normal(0, self.con_dict['ES_sigma'], \
                 size=self.var_dict[name][1::2,...].shape).astype(cp.float16)
@@ -309,6 +315,7 @@ class NetworkController:
         self.NNb_inds = to_gpu(self.NNb_inds)
 
         self.var_dict['W_rnn'] *= self.con_dict['W_rnn_mask']
+        print('\nMin Loss: {:5.3f} from {:5.3f} | Will change: {}\n'.format(to_cpu(min), to_cpu(self.loss[0]), changing_flag))
 
 
 

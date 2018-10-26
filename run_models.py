@@ -93,9 +93,9 @@ evo_model = {
     'membrane_constant'   : 100,
     'task'                : 'dms',
     'learning_method'     : 'ES',
-    'ES_learning_rate'    : 0.005,
-    'ES_sigma'            : 0.05,
-    'save_fn'             : 'evo_model_dms_lr005_si05_v0',
+    'ES_learning_rate'    : 0.0005,
+    'ES_sigma'            : 0.005,
+    'save_fn'             : 'evo_model_dms_dly0_lr005_si005_v0',
     'n_hidden'            : 100,
     'dt'                  : 20,
     'use_latency'         : False,
@@ -107,6 +107,7 @@ evo_model = {
     'tuning_height'       : 4.,
     'response_multiplier' : 4.,
     'n_networks'          : 2001,
+    'delay_time'          : 0,
 }
 
 evo_model_adex = {
