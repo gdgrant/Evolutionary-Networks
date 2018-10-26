@@ -1,6 +1,7 @@
 from utils import *
 from parameters import par, update_dependencies
 from stimulus import Stimulus
+from sklearn.neighbors import NearestNeighbors
 
 class NetworkController:
 
@@ -12,7 +13,11 @@ class NetworkController:
         if par['learning_method'] == 'ES':
             # use the ADAM optimizer
             self.make_adam_variables()
+
         self.size_ref = cp.ones([par['n_networks'],par['batch_size'],par['n_hidden']], dtype=cp.float16)
+
+        self.NNbs = NearestNeighbors(n_neighbors=10, algorithm='kd_tree', \
+            radius=1.0, leaf_size=100)
 
 
     def make_variables(self):
@@ -265,36 +270,43 @@ class NetworkController:
         learning_rate = (self.con_dict['ES_learning_rate']/self.con_dict['ES_sigma'])* \
             cp.sqrt(1-self.adam_par['beta2']**self.adam_par['t'])/(1-self.adam_par['beta1']**self.adam_par['t'])
 
-        epsilons = cp.zeros([par['n_networks'],1])
+        epsilons = cp.empty([par['n_networks']-1,1])
+
+        t0 = time.time()
         for name in self.var_dict.keys():
             if iteration == 0:
                 self.var_dict[name] = self.var_dict[name][self.rank,...]
             else:
+
                 grad_epsilon = self.var_dict[name][1:,...] - self.var_dict[name][0:1,...]
-                delta_var = cp.mean(grad_epsilon * self.loss[1:][:,cp.newaxis,cp.newaxis], axis=0)
+                NN_loss = cp.mean(self.loss[1:][self.NNb_inds], axis=1)
+                delta_var = cp.mean(grad_epsilon * NN_loss[:,cp.newaxis,cp.newaxis], axis=0)
 
-                self.adam_par['m_' + name] = self.adam_par['beta1']*self.adam_par['m_' + name] + \
-                    (1 - self.adam_par['beta1'])*delta_var
-                self.adam_par['v_' + name] = self.adam_par['beta2']*self.adam_par['v_' + name] + \
-                    (1 - self.adam_par['beta2'])*delta_var*delta_var
+                if True:
+                    self.adam_par['m_' + name] = self.adam_par['beta1']*self.adam_par['m_' + name] + \
+                        (1 - self.adam_par['beta1'])*delta_var
+                    self.adam_par['v_' + name] = self.adam_par['beta2']*self.adam_par['v_' + name] + \
+                        (1 - self.adam_par['beta2'])*delta_var*delta_var
 
-                self.var_dict[name][0] -= learning_rate * self.adam_par['m_' + name]/(self.adam_par['epsilon'] + \
-                    cp.sqrt(self.adam_par['v_' + name]))
+                    self.var_dict[name][0] -= learning_rate * self.adam_par['m_' + name]/(self.adam_par['epsilon'] + \
+                        cp.sqrt(self.adam_par['v_' + name]))
+
+                else:
+                    ind = cp.argmin(NN_loss)
+                    self.var_dict[name][0] = self.var_dict[name][1+ind:,...]
 
             var_epsilon = cp.random.normal(0, self.con_dict['ES_sigma'], \
                 size=self.var_dict[name][1::2,...].shape).astype(cp.float16)
-            self.var_dict[name][1::2] = self.var_dict[name][0:1,...] + var_epsilon
-            self.var_dict[name][2::2] = self.var_dict[name][0:1,...] - var_epsilon
-            var_epsilons = cp.zeros([par['n_networks'], *self.var_dict[name].shape], dtype=cp.float16)
-        """print(var_epsilons[1::2].shape)
-        print(var_epsilon.shape)
-        quit()
-        var_epsilons[1::2] = var_epsilon
-        var_epsilons[2::2] = -var_epsilon
-        epsilons = cp.concatenate(epsilons, var_epsilons.flatten(), axis=1)
+            var_epsilon = cp.concatenate([var_epsilon, -var_epsilon], axis=0)
+            self.var_dict[name][1:,...] = self.var_dict[name][0:1,...] + var_epsilon
 
-        print(epsilons.shape)
-        quit()"""
+            var_epsilon = cp.reshape(var_epsilon, [par['n_networks']-1,-1])
+            epsilons = cp.concatenate((epsilons, var_epsilon), axis=1)
+
+        epsilons = to_cpu(epsilons)
+        self.NNbs.fit(epsilons)
+        _, self.NNb_inds = self.NNbs.kneighbors(epsilons)
+        self.NNb_inds = to_gpu(self.NNb_inds)
 
         self.var_dict['W_rnn'] *= self.con_dict['W_rnn_mask']
 

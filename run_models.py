@@ -88,14 +88,14 @@ base_model = {
 }
 
 evo_model = {
-    'iterations'          : 201,
+    'iterations'          : 200001,
     'cell_type'           : 'rate',
     'membrane_constant'   : 100,
     'task'                : 'dms',
     'learning_method'     : 'ES',
-    'ES_learning_rate'    : 0.0001,
-    'ES_sigma'            : 0.01,
-    'save_fn'             : 'evo_model_dms_v0',
+    'ES_learning_rate'    : 0.005,
+    'ES_sigma'            : 0.05,
+    'save_fn'             : 'evo_model_dms_lr005_si05_v0',
     'n_hidden'            : 100,
     'dt'                  : 20,
     'use_latency'         : False,
@@ -106,7 +106,7 @@ evo_model = {
     'reciprocal_cost'     : 0.,
     'tuning_height'       : 4.,
     'response_multiplier' : 4.,
-    'n_networks'          : 1001,
+    'n_networks'          : 2001,
 }
 
 evo_model_adex = {
@@ -144,6 +144,6 @@ def evo_model_sweep():
 
 
 
-evo_model_sweep()
-quit()
+#evo_model_sweep()
+#quit()
 try_model(evo_model)

@@ -9,7 +9,7 @@ par = {
     'save_fn'               : 'testing_spiking',
     'cell_type'             : 'adex',    # 'rate', 'LIF', 'adex'
     'use_stp'               : True,
-    'iters_per_output'      : 5,
+    'iters_per_output'      : 1,
     'learning_method'       : 'GA', # Evo search = 'ES', Genetic algorithm = 'GA'
 
     'EI_prop'               : 0.8,

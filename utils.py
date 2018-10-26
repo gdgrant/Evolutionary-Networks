@@ -1,6 +1,7 @@
 import sys
 import itertools
 import pickle
+import time
 
 import numpy as np
 if len(sys.argv) > 1:
