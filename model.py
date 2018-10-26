@@ -286,15 +286,15 @@ class NetworkController:
             self.var_dict[name][1::2] = self.var_dict[name][0:1,...] + var_epsilon
             self.var_dict[name][2::2] = self.var_dict[name][0:1,...] - var_epsilon
             var_epsilons = cp.zeros([par['n_networks'], *self.var_dict[name].shape], dtype=cp.float16)
-            print(var_epsilons[1::2].shape)
-            print(var_epsilon.shape)
-            quit()
-            var_epsilons[1::2] = var_epsilon
-            var_epsilons[2::2] = -var_epsilon
-            epsilons = cp.concatenate(epsilons, var_epsilons.flatten(), axis=1)
+        """print(var_epsilons[1::2].shape)
+        print(var_epsilon.shape)
+        quit()
+        var_epsilons[1::2] = var_epsilon
+        var_epsilons[2::2] = -var_epsilon
+        epsilons = cp.concatenate(epsilons, var_epsilons.flatten(), axis=1)
 
         print(epsilons.shape)
-        quit()
+        quit()"""
 
         self.var_dict['W_rnn'] *= self.con_dict['W_rnn_mask']
 
