@@ -16,7 +16,7 @@ class NetworkController:
 
         self.size_ref = cp.ones([par['n_networks'],par['batch_size'],par['n_hidden']], dtype=cp.float16)
 
-        self.NNbs = NearestNeighbors(n_neighbors=5, algorithm='kd_tree', \
+        self.NNbs = NearestNeighbors(n_neighbors=20, algorithm='kd_tree', \
             radius=1.0, leaf_size=100)
 
 
@@ -255,15 +255,38 @@ class NetworkController:
 
         self.var_dict['W_rnn'] *= self.con_dict['W_rnn_mask']
 
+
     def breed_models_evo_search(self, iteration):
 
         """
+        Evo search without ADAM or k-NearestNeighbors weighting
         We calculate the gradient from the previous run, and then adjust the base network parameters
 
         self.var_dict[name][0] is considered our base network, whose parameters we will
         adjust with evolutionary search
         self.var_dict[name][1 thru N] are used to calculate the loss in a region nearby
         the base network, in order to calculate the "gradient"
+        """
+
+        learning_rate = self.con_dict['ES_learning_rate']
+
+        for name in self.var_dict.keys():
+            grad_epsilon = self.var_dict[name][1:,...] - self.var_dict[name][0:1,...]
+            delta_var = grad_epsilon * self.loss[1:][:,cp.newaxis,cp.newaxis]
+            self.var_dict[name][0] -= learning_rate * cp.mean(delta_var, axis=0)
+
+            var_epsilon = cp.random.normal(0, self.con_dict['ES_sigma'], \
+                size=self.var_dict[name][1::2,...].shape).astype(cp.float16)
+            self.var_dict[name][1::2] = self.var_dict[name][0:1,...] + var_epsilon
+            self.var_dict[name][2::2] = self.var_dict[name][0:1,...] - var_epsilon
+
+        self.var_dict['W_rnn'] *= self.con_dict['W_rnn_mask']
+
+
+    def breed_models_evo_search_with_adam(self, iteration):
+
+        """
+        Evo search with ADAM and k-NearestNeighbors weighting
         """
 
         self.adam_par['t'] += 1
@@ -285,7 +308,7 @@ class NetworkController:
                 NN_loss = cp.mean(self.loss[1:][self.NNb_inds], axis=1)
                 delta_var = cp.mean(grad_epsilon * NN_loss[:,cp.newaxis,cp.newaxis], axis=0)
 
-                if False:
+                if True:
                     self.adam_par['m_' + name] = self.adam_par['beta1']*self.adam_par['m_' + name] + \
                         (1 - self.adam_par['beta1'])*delta_var
                     self.adam_par['v_' + name] = self.adam_par['beta2']*self.adam_par['v_' + name] + \
@@ -315,7 +338,7 @@ class NetworkController:
         self.NNb_inds = to_gpu(self.NNb_inds)
 
         self.var_dict['W_rnn'] *= self.con_dict['W_rnn_mask']
-        print('\nMin Loss: {:5.3f} from {:5.3f} | Will change: {}\n'.format(to_cpu(min), to_cpu(self.loss[0]), changing_flag))
+        #print('\nMin Loss: {:5.3f} from {:5.3f} | Will change: {}\n'.format(to_cpu(min), to_cpu(self.loss[0]), changing_flag))
 
 
 
@@ -364,7 +387,7 @@ def main():
         if par['learning_method'] == 'GA':
             control.breed_models(epsilons=weight_momentum)
         elif par['learning_method'] == 'ES':
-            control.breed_models_evo_search(i)
+            control.breed_models_evo_search_with_adam(i)
         else:
             raise Exception('Unknown learning method!')
 
