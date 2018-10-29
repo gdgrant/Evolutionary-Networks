@@ -59,9 +59,9 @@ class Stimulus:
     def dms(self):
 
         trial_info = {
-            'neural_input'      : np.random.normal(0., par['noise_in'], size=[par['num_time_steps'], par['batch_size'], par['n_input']]),
-            'desired_output'    : np.zeros([par['num_time_steps'], par['batch_size'], par['n_output']], dtype=np.float16),
-            'train_mask'        : np.ones([par['num_time_steps'], par['batch_size']], dtype=np.float16)
+            'neural_input'      : np.float32(np.random.normal(0., par['noise_in'], size=[par['num_time_steps'], par['batch_size'], par['n_input']])),
+            'desired_output'    : np.zeros([par['num_time_steps'], par['batch_size'], par['n_output']], dtype=np.float32),
+            'train_mask'        : np.ones([par['num_time_steps'], par['batch_size']], dtype=np.float32)
         }
 
         end_dead_time       = par['dead_time']//par['dt']
@@ -87,7 +87,7 @@ class Stimulus:
             trial_info['neural_input'][end_delay_time:end_test_time,t,:par['num_motion_tuned']] += self.motion_tuning[np.newaxis,:,0,test_direction]
 
             output_neuron = 1 if match[t] else 2
-            trial_info['desired_output'][end_dead_time:end_delay_time,t,0] = 1.
+            trial_info['desired_output'][:end_delay_time,t,0] = 1.
             trial_info['desired_output'][end_delay_time:end_test_time,t,output_neuron] = 1.
 
         return trial_info

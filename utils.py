@@ -102,8 +102,11 @@ def adex_spike(V, w, c):
 
 ### Judgement functions
 
-def cross_entropy(mask, target, output, eps=1e-7):
+def cross_entropy(mask, target, output, eps=1e-16):
     """ Calculate the cross entropy loss for a rate-based network """
+    #print(output.shape, target.shape, mask.shape)
+    #print(output.dtype, target.dtype)
+    
     return -cp.mean(mask[...,cp.newaxis]*target*cp.log(softmax(output)+eps), axis=(0,2,3))
 
 
