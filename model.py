@@ -16,7 +16,7 @@ class NetworkController:
 
         self.size_ref = cp.ones([par['n_networks'],par['batch_size'],par['n_hidden']], dtype=cp.float16)
 
-        self.NNbs = NearestNeighbors(n_neighbors=5, algorithm='kd_tree', \
+        self.NNbs = NearestNeighbors(n_neighbors=10, algorithm='kd_tree', \
             radius=1.0, leaf_size=100)
 
 
@@ -72,12 +72,14 @@ class NetworkController:
         self.con_dict[con_name] = to_gpu(con)
 
 
-    def run_models(self, input_data):
+    def run_models(self, input_data, output_data, output_mask):
         """ Run model based on input data, collecting network outputs into y """
 
         input_data = to_gpu(input_data)
+        output_data = to_gpu(output_data)
+        output_mask = to_gpu(output_mask)
 
-        self.y = cp.zeros([par['num_time_steps'], par['n_networks'], par['batch_size'], par['n_output']], dtype=cp.float16)
+        self.y = cp.zeros([par['num_time_steps'], par['n_networks'], par['batch_size'], par['n_output']], dtype=cp.float32)
         syn_x  = self.con_dict['syn_x_init']  * self.size_ref if par['use_stp'] else 0.
         syn_u  = self.con_dict['syn_u_init']  * self.size_ref if par['use_stp'] else 0.
         h      = self.var_dict['h_init']      * self.size_ref
@@ -91,12 +93,29 @@ class NetworkController:
         self.W_rnn_effective = apply_EI(self.var_dict['W_rnn'], self.con_dict['EI_mask'])
 
         self.spiking_means = cp.zeros([par['n_networks']])
+        self.out_derivative_w = cp.zeros([par['n_hidden'], par['n_output']])
+        self.out_derivative_b = cp.zeros([par['n_output']])
+
         for t in range(par['num_time_steps']):
             if par['cell_type'] == 'rate':
                 _, h, syn_x, syn_u = self.rate_recurrent_cell(None, h, input_data[t], syn_x, syn_u, t)
                 self.y[t,...] = cp.matmul(h, self.var_dict['W_out']) + self.var_dict['b_out']
-
+            
                 self.spiking_means += cp.mean(h, axis=(1,2))/self.con_dict['num_time_steps']
+                
+                out_softmax = softmax(self.y[t,0,:,:])
+                #print('Output mask', output_mask.shape)
+                #print('output data', output_data.shape)
+                #print('y',self.y.shape)
+                #print('h', h.shape) 
+                diff = output_mask[t,...,cp.newaxis]*(output_data[t,...] -  out_softmax)
+                
+                #s = cp.mean(diff[0,:,:],axis=0)
+                self.out_derivative_b += cp.mean(diff[0,:,:],axis=0)
+                for k in range(3):
+                    self.out_derivative_w[:,k] +=cp.mean(diff[0,:,k:k+1]*h[0,:,:],axis=0) 
+                
+                
 
             elif par['cell_type'] == 'LIF':
                 h_out, h, syn_x, syn_u = self.LIF_spiking_recurrent_cell(h_out, h, input_data[t], syn_x, syn_u, t)
@@ -267,31 +286,46 @@ class NetworkController:
         """
 
         self.adam_par['t'] += 1
-        learning_rate = (self.con_dict['ES_learning_rate']/self.con_dict['ES_sigma'])* \
+        learning_rate = (self.con_dict['ES_learning_rate'])* \
             cp.sqrt(1-self.adam_par['beta2']**self.adam_par['t'])/(1-self.adam_par['beta1']**self.adam_par['t'])
 
         epsilons = cp.empty([par['n_networks']-1,1])
 
         t0 = time.time()
         changing_flag = False
+
+
+        #self.var_dict['b_out'] += self.out_derivative_b[cp.newaxis,:]*par['ES_learning_rate']/100
+        #self.var_dict['W_out'] += self.out_derivative_w[cp.newaxis,:,:]*par['ES_learning_rate']/100
+
         for name in self.var_dict.keys():
+
             if iteration == 0:
                 self.var_dict[name] = self.var_dict[name][self.rank,...]
                 min = self.loss[0]
                 changing_flag = True
             else:
 
-                grad_epsilon = self.var_dict[name][1:,...] - self.var_dict[name][0:1,...]
-                NN_loss = cp.mean(self.loss[1:][self.NNb_inds], axis=1)
-                delta_var = cp.mean(grad_epsilon * NN_loss[:,cp.newaxis,cp.newaxis], axis=0)
+                if name == 'W_out':
+                    delta_var = self.out_derivative_w/100
+                elif name == 'b_out':
+                    delta_var = self.out_derivative_b/100
+                else:
 
-                if False:
+                    grad_epsilon = self.var_dict[name][1:,...] - self.var_dict[name][0:1,...]
+                    NN_loss = cp.mean(self.loss[1:][self.NNb_inds], axis=1)
+                    ind_min = cp.argmin(NN_loss)
+                    ind_opp = (ind_min+1000)%2000
+                    NN_diff = NN_loss[ind_opp]-NN_loss[ind_min]
+                    delta_var = grad_epsilon[ind_min,...] * NN_diff[cp.newaxis,cp.newaxis]
+
+                if True:
                     self.adam_par['m_' + name] = self.adam_par['beta1']*self.adam_par['m_' + name] + \
                         (1 - self.adam_par['beta1'])*delta_var
                     self.adam_par['v_' + name] = self.adam_par['beta2']*self.adam_par['v_' + name] + \
                         (1 - self.adam_par['beta2'])*delta_var*delta_var
 
-                    self.var_dict[name][0] -= learning_rate * self.adam_par['m_' + name]/(self.adam_par['epsilon'] + \
+                    self.var_dict[name][0] += learning_rate * self.adam_par['m_' + name]/(self.adam_par['epsilon'] + \
                         cp.sqrt(self.adam_par['v_' + name]))
 
                 else:
@@ -300,14 +334,19 @@ class NetworkController:
                         ind = cp.argmin(NN_loss)
                         self.var_dict[name][0] = self.var_dict[name][1+ind,...]
                         changing_flag = True
+            if not (name == 'W_out' or name == 'b_out'): 
+                var_epsilon = cp.random.normal(0, self.con_dict['ES_sigma'], \
+                    size=self.var_dict[name][1::2,...].shape).astype(cp.float16)
+                var_epsilon = cp.concatenate([var_epsilon, -var_epsilon], axis=0)
+                self.var_dict[name][1:,...] = self.var_dict[name][0:1,...] + var_epsilon
 
-            var_epsilon = cp.random.normal(0, self.con_dict['ES_sigma'], \
-                size=self.var_dict[name][1::2,...].shape).astype(cp.float16)
-            var_epsilon = cp.concatenate([var_epsilon, -var_epsilon], axis=0)
-            self.var_dict[name][1:,...] = self.var_dict[name][0:1,...] + var_epsilon
-
-            var_epsilon = cp.reshape(var_epsilon, [par['n_networks']-1,-1])
-            epsilons = cp.concatenate((epsilons, var_epsilon), axis=1)
+                #print('var epsilon',var_epsilon.shape)
+                var_epsilon = cp.reshape(var_epsilon, [par['n_networks']-1,-1])
+                epsilons = cp.concatenate((epsilons, var_epsilon), axis=1)
+                #print('var epsilon 2 ', var_epsilon.shape)
+                #print('epsilon',epsilon.shape)
+            else:
+                self.var_dict[name][1:,...] = self.var_dict[name][0:1,...]
 
         epsilons = to_cpu(epsilons)
         self.NNbs.fit(epsilons)
@@ -315,7 +354,7 @@ class NetworkController:
         self.NNb_inds = to_gpu(self.NNb_inds)
 
         self.var_dict['W_rnn'] *= self.con_dict['W_rnn_mask']
-        print('\nMin Loss: {:5.3f} from {:5.3f} | Will change: {}\n'.format(to_cpu(min), to_cpu(self.loss[0]), changing_flag))
+        #print('\nMin Loss: {:5.3f} from {:5.3f} | Will change: {}\n'.format(to_cpu(min), to_cpu(self.loss[0]), changing_flag))
 
 
 
@@ -327,7 +366,7 @@ def main():
 
     # Get loss baseline
     trial_info = stim.make_batch()
-    control.run_models(trial_info['neural_input'])
+    control.run_models(trial_info['neural_input'], trial_info['desired_output'], trial_info['train_mask'])
     loss_baseline = np.mean(control.judge_models(trial_info['desired_output'], trial_info['train_mask']))
     control.update_constant('loss_baseline', loss_baseline)
     mean_weights_prev = control.get_weights()
@@ -339,7 +378,7 @@ def main():
     for i in range(par['iterations']):
 
         trial_info = stim.make_batch()
-        spike = control.run_models(trial_info['neural_input'])
+        spike = control.run_models(trial_info['neural_input'], trial_info['desired_output'], trial_info['train_mask'])
         loss  = control.judge_models(trial_info['desired_output'], trial_info['train_mask'])[:par['num_survivors']]
         mean_weights = control.get_weights()
 
@@ -375,8 +414,11 @@ def main():
             task_loss = np.mean(loss_dict['task'][:par['num_survivors']])
             freq_loss = np.mean(loss_dict['freq'][:par['num_survivors']])
             reci_loss = np.mean(loss_dict['reci'][:par['num_survivors']])
-            top_task_acc = task_accuracy.max()
-            top_full_acc = full_accuracy.max()
+            #top_task_acc = task_accuracy.max()
+            #top_full_acc = full_accuracy.max()
+            print('Acc shape', task_accuracy.shape)
+            top_task_acc = task_accuracy[0]
+            top_full_acc = full_accuracy[0]
             task_acc  = np.mean(task_accuracy[:par['num_survivors']])
             full_acc  = np.mean(full_accuracy[:par['num_survivors']])
             curr_loss = np.mean(loss[:par['num_survivors']])
