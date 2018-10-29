@@ -1,7 +1,6 @@
 from utils import *
 from parameters import par, update_dependencies
 from stimulus import Stimulus
-from sklearn.neighbors import NearestNeighbors
 
 class NetworkController:
 
@@ -10,136 +9,105 @@ class NetworkController:
 
         self.make_constants()
         self.make_variables()
-        if par['learning_method'] == 'ES':
-            # use the ADAM optimizer
-            self.make_adam_variables()
 
-        self.size_ref = cp.ones([par['n_networks'],par['batch_size'],par['n_hidden']], dtype=cp.float16)
-
-        self.NNbs = NearestNeighbors(n_neighbors=10, algorithm='kd_tree', \
-            radius=1.0, leaf_size=100)
+        self.size_ref = cp.ones([par['n_networks'],par['batch_size'],par['n_hidden']], \
+            dtype=cp.float16)
 
 
     def make_variables(self):
-        """ Pull variables into GPU """
+        """ Pull network variables into GPU """
 
-        var_names = ['W_in', 'W_out', 'W_rnn', 'b_rnn', 'b_out', 'h_init']
-        var_names += ['threshold', 'reset'] if par['cell_type']=='LIF' else []
+        if par['cell_type'] == 'rate':
+            var_names = ['W_in', 'W_out', 'W_rnn', 'b_rnn', 'b_out', 'h_init']
+        elif par['cell_type'] == 'adex':
+            var_names = ['W_in', 'W_out', 'W_rnn']
+
         self.var_dict = {}
         for v in var_names:
             self.var_dict[v] = to_gpu(par[v+'_init'])
 
 
-    def make_adam_variables(self):
-
-        self.adam_par = {}
-        self.adam_par['beta1'] = to_gpu(par['adam_beta1'])
-        self.adam_par['beta2'] = to_gpu(par['adam_beta2'])
-        self.adam_par['epsilon'] = to_gpu(par['adam_epsilon'])
-        self.adam_par['t'] = to_gpu(0)
-
-        for v in self.var_dict.keys():
-            self.adam_par['m_' + v] = cp.zeros_like(self.var_dict[v][0])
-            self.adam_par['v_' + v] = cp.zeros_like(self.var_dict[v][0])
-
-
-
     def make_constants(self):
-        """ Pull constants into GPU """
+        """ Pull constants for computation into GPU """
 
-        constant_names    = ['alpha_neuron', 'beta_neuron', 'noise_rnn', 'W_rnn_mask', \
-            'mutation_rate', 'mutation_strength', 'cross_rate', 'EI_mask', 'loss_baseline', \
-            'dt', 'freq_cost', 'freq_target', 'num_time_steps', 'reciprocal_max', 'reciprocal_cost', 'reciprocal_threshold']
+        gen_constants   = ['n_networks', 'n_hidden', 'W_rnn_mask', 'EI_mask', 'noise_rnn']
+        time_constants  = ['alpha_neuron', 'beta_neuron', 'dt', 'num_time_steps']
+        loss_constants  = ['freq_cost', 'freq_target', 'reciprocal_cost', 'reciprocal_max', 'reciprocal_threshold']
 
-        stp_constants     = ['syn_x_init', 'syn_u_init', 'U', 'alpha_stf', 'alpha_std', 'stp_mod']
-        adex_constants    = ['adex', 'w_init']
-        latency_constants = ['max_latency', 'latency_mask']
-        evo_constants     = ['ES_learning_rate', 'ES_sigma', 'n_networks']
+        stp_constants   = ['syn_x_init', 'syn_u_init', 'U', 'alpha_stf', 'alpha_std', 'stp_mod']
+        adex_constants  = ['adex', 'w_init']
+        lat_constants   = ['latency_mask', 'max_latency']
 
-        constant_names += stp_constants  if par['use_stp'] else []
+        GA_constants    = ['mutation_rate', 'mutation_strength', 'cross_rate', 'loss_baseline']
+        ES_constants    = ['ES_learning_rate', 'ES_sigma']
+
+        constant_names  = gen_constants + time_constants + loss_constants
+        constant_names += stp_constants if par['use_stp'] else []
         constant_names += adex_constants if par['cell_type'] == 'adex' else []
-        constant_names += latency_constants if par['use_latency'] else []
-        constant_names += evo_constants if par['learning_method'] == 'ES' else []
+        constant_names += lat_constants if par['use_latency'] else []
+        constant_names += GA_constants if par['learning_method'] == 'GA' else []
+        constant_names += ES_constants if par['learning_method'] == 'ES' else []
 
         self.con_dict = {}
         for c in constant_names:
             self.con_dict[c] = to_gpu(par[c])
 
 
-    def update_constant(self, con_name, con):
+    def update_constant(self, name, val):
         """ Update a given constant in the model """
 
-        self.con_dict[con_name] = to_gpu(con)
+        self.con_dict[name] = to_gpu(val)
 
 
-    def run_models(self, input_data, output_data, output_mask):
-        """ Run model based on input data, collecting network outputs into y """
+    def run_models(self, input_data):
+        """ Run network ensemble based on input data, collecting network outputs into y """
 
+        # Establish inputs, outputs, and recording
         input_data = to_gpu(input_data)
-        output_data = to_gpu(output_data)
-        output_mask = to_gpu(output_mask)
+        self.y = cp.zeros(par['y_init_shape'], dtype=cp.float16)
+        self.spiking_means = cp.zeros([par['n_networks']])
 
-        self.y = cp.zeros([par['num_time_steps'], par['n_networks'], par['batch_size'], par['n_output']], dtype=cp.float32)
-        syn_x  = self.con_dict['syn_x_init']  * self.size_ref if par['use_stp'] else 0.
-        syn_u  = self.con_dict['syn_u_init']  * self.size_ref if par['use_stp'] else 0.
-        h      = self.var_dict['h_init']      * self.size_ref
-        h_out  = cp.zeros_like(h)
-        if par['cell_type'] == 'adex':
-            w  = self.con_dict['w_init']      * self.size_ref
-            h  = self.con_dict['adex']['V_r'] * self.size_ref
+        # Initialize cell states
+        if par['cell_type'] == 'rate':
+            spike = self.var_dict['h_init'] * self.size_ref
+        else:
+            spike = 0. * self.size_ref
+            state = self.con_dict['adex']['V_r'] * self.size_ref
+            adapt = self.con_dict['w_init'] * self.size_ref
+
+        # Initialize STP if being used
+        if par['use_stp']:
+            syn_x = self.con_dict['syn_x_init'] * self.size_ref
+            syn_u = self.con_dict['syn_u_init'] * self.size_ref
+        else:
+            syn_x = syn_u = 0.
+
+        # Initialize latency buffer if being used
         if par['use_latency']:
-            self.h_out_buffer = cp.zeros([par['max_latency'], par['n_networks'], par['batch_size'], par['n_hidden']], dtype=cp.float16)
+            self.state_buffer = cp.zeros(par['state_buffer_shape'], dtype=cp.float16)
 
+        # Apply the EI mask to the recurrent weights
         self.W_rnn_effective = apply_EI(self.var_dict['W_rnn'], self.con_dict['EI_mask'])
 
-        self.spiking_means = cp.zeros([par['n_networks']])
-        self.out_derivative_w = cp.zeros([par['n_hidden'], par['n_output']])
-        self.out_derivative_b = cp.zeros([par['n_output']])
-
+        # Loop across time and collect network output into y, using the
+        # desired recurrent cell type
         for t in range(par['num_time_steps']):
             if par['cell_type'] == 'rate':
-                _, h, syn_x, syn_u = self.rate_recurrent_cell(None, h, input_data[t], syn_x, syn_u, t)
-                self.y[t,...] = cp.matmul(h, self.var_dict['W_out']) + self.var_dict['b_out']
-
-                self.spiking_means += cp.mean(h, axis=(1,2))/self.con_dict['num_time_steps']
-
-                out_softmax = softmax(self.y[t,0,:,:])
-                #print('Output mask', output_mask.shape)
-                #print('output data', output_data.shape)
-                #print('y',self.y.shape)
-                #print('h', h.shape)
-                diff = output_mask[t,...,cp.newaxis]*(output_data[t,...] -  out_softmax)
-
-                #s = cp.mean(diff[0,:,:],axis=0)
-                self.out_derivative_b += cp.mean(diff[0,:,:],axis=0)
-                for k in range(3):
-                    self.out_derivative_w[:,k] +=cp.mean(diff[0,:,k:k+1]*h[0,:,:],axis=0)
-
-
-
-            elif par['cell_type'] == 'LIF':
-                h_out, h, syn_x, syn_u = self.LIF_spiking_recurrent_cell(h_out, h, input_data[t], syn_x, syn_u, t)
-                self.y[t,...] = (1-self.con_dict['beta_neuron'])*self.y[t-1,...] \
-                              + self.con_dict['beta_neuron']*cp.matmul(h_out, self.var_dict['W_out'])# + self.var_dict['b_out']
-                self.y[t,...] = cp.minimum(relu(self.y[t,...]), 5)
-
-                self.spiking_means += cp.mean(h_out, axis=(1,2))*(1000/self.con_dict['num_time_steps'])
+                spike, syn_x, syn_u = self.rate_recurrent_cell(spike, input_data[t], syn_x, syn_u, t)
+                self.y[t,...] = cp.matmul(spike, self.var_dict['W_out']) + self.var_dict['b_out']
+                self.spiking_means += cp.mean(spike, axis=(1,2))/self.con_dict['num_time_steps']
 
             elif par['cell_type'] == 'adex':
-                h_out, h, w, syn_x, syn_u = self.AdEx_spiking_recurrent_cell(h_out, h, w, input_data[t], syn_x, syn_u, t)
+                spike, state, adapt = self.AdEx_recurrent_cell(spike, state, adapt, input_data[t], syn_x, syn_u, t)
                 self.y[t,...] = (1-self.con_dict['beta_neuron'])*self.y[t-1,...] \
-                              + self.con_dict['beta_neuron']*cp.matmul(h_out, self.var_dict['W_out'])# + self.var_dict['b_out']
-                self.y[t,...] = cp.minimum(relu(self.y[t,...]), 5)
-
-                self.spiking_means += cp.mean(h_out, axis=(1,2))*(1000/self.con_dict['num_time_steps'])
-
-        return to_cpu(self.spiking_means)
+                    + self.con_dict['beta_neuron']*cp.matmul(spike, self.var_dict['W_out'])
+                self.spiking_means += cp.mean(spike, axis=(1,2))*1000/self.con_dict['num_time_steps']
 
 
     def rnn_matmul(self, h_in, W_rnn, t):
-        """ Performs the matrix multiplication required for the recurrent
+        """ Perform the matmul operation required for the recurrent
             weight matrix, performing special operations such as latency
-            where necessary """
+            where ncessary """
 
         if par['use_latency']:
             # Calculate this time step's latency-affected W_rnn and switch
@@ -149,324 +117,233 @@ class NetworkController:
 
             # Zero out the previous time step's buffer, and add to the
             # buffer for the upcoming time steps
-            self.h_out_buffer[t-1%self.con_dict['max_latency'],...] = 0.
-            self.h_out_buffer += cp.matmul(h_in, W_rnn_latency)
+            self.state_buffer[t-1%self.con_dict['max_latency'],...] = 0.
+            self.state_buffer += cp.matmul(h_in, W_rnn_latency)
 
             # Return the hidden state buffer for this time step
-            return self.h_out_buffer[t%self.con_dict['max_latency'],...]
+            return self.state_buffer[t%self.con_dict['max_latency'],...]
         else:
             return cp.matmul(h_in, W_rnn)
 
 
-    def rate_recurrent_cell(self, h_out, h, rnn_input, syn_x, syn_u, t):
+    def rate_recurrent_cell(self, h, rnn_input, syn_x, syn_u, t):
         """ Process one time step of the hidden layer
-            based on the previous state and the current input """
+            based on the previous state and the current input,
+            using the rate-based model"""
 
+        # Apply synaptic plasticity
         h_post, syn_x, syn_u = synaptic_plasticity(h, syn_x, syn_u, \
             self.con_dict, par['use_stp'], par['n_hidden'])
 
+        # Calculate new hidden state
         h = relu((1-self.con_dict['alpha_neuron'])*h \
-            + self.con_dict['alpha_neuron']*(cp.matmul(rnn_input, self.var_dict['W_in']) \
-            + self.rnn_matmul(h_post, self.W_rnn_effective, t) + self.var_dict['b_rnn']) + \
-            + cp.random.normal(scale=self.con_dict['noise_rnn'], size=h.shape))
+          + self.con_dict['alpha_neuron']*(cp.matmul(rnn_input, self.var_dict['W_in']) \
+          + self.rnn_matmul(h_post, self.W_rnn_effective, t) + self.var_dict['b_rnn']) \
+          + cp.random.normal(scale=self.con_dict['noise_rnn'], size=h.shape).astype(cp.float16))
 
-        return None, h, syn_x, syn_u
+        return h, syn_x, syn_u
 
 
-    def LIF_spiking_recurrent_cell(self, h_out, h, rnn_input, syn_x, syn_u, t):
+    def AdEx_recurrent_cell(self, spike, V, w, rnn_input, syn_x, syn_u, t):
         """ Process one time step of the hidden layer
             based on the previous state and the current input,
-            using leaky integrate-and-fire spiking """
+            using the adaptive-exponential spiking model """
 
-        h_post, syn_x, syn_u = synaptic_plasticity(h_out, syn_x, syn_u, \
+        # Apply synaptic plasticity
+        spike_post, syn_x, syn_u = synaptic_plasticity(spike, syn_x, syn_u, \
             self.con_dict, par['use_stp'], par['n_hidden'])
 
-        h = (1-self.con_dict['alpha_neuron'])*h \
-            + self.con_dict['alpha_neuron']*(cp.matmul(rnn_input, self.var_dict['W_in']) \
-            + self.rnn_matmul(h_post, self.W_rnn_effective, t) + self.var_dict['b_rnn']) + \
-            + cp.random.normal(scale=self.con_dict['noise_rnn'], size=h.shape)
+        # Calculate the current incident on the hidden neurons
+        I = cp.matmul(rnn_input, self.var_dict['W_in']) + self.rnn_matmul(spike_post, self.W_rnn_effective)
+        V, w, spike = run_adex(V, w, I, self.con_dict['adex'])
 
-        h_out = cp.where(h > self.var_dict['threshold'], cp.ones_like(h_out), cp.zeros_like(h_out))
-        h     = (1 - h_out)*h + h_out*self.var_dict['reset']
-
-        return h_out, h, syn_x, syn_u
-
-
-    def AdEx_spiking_recurrent_cell(self, h_out, V, w, rnn_input, syn_x, syn_u, t):
-        """ Process one time step of the hidden layer
-            based on the previous state and the current input,
-            using adaptive-exponential spiking """
-
-        h_post, syn_x, syn_u = synaptic_plasticity(h_out, syn_x, syn_u, \
-            self.con_dict, par['use_stp'], par['n_hidden'])
-
-        I = cp.matmul(rnn_input, self.var_dict['W_in']) + self.rnn_matmul(h_post, self.W_rnn_effective, t)# + self.var_dict['b_rnn']
-        V, w, h_out = run_adex(V, w, I, self.con_dict['adex'])
-
-        return h_out, V, w, syn_x, syn_u
+        return spike, V, w, syn_x, syn_u
 
 
     def judge_models(self, output_data, output_mask):
-        """ Determine the loss and accuracy of each model,
-            and rank them accordingly """
+        """ Determine the loss of each model, and rank them accordingly """
 
+        # Load output data and mask to the GPU
         self.output_data = to_gpu(output_data)
         self.output_mask = to_gpu(output_mask)
 
+        # Calculate the task loss of each network (returns an array of size [n_networks])
         self.task_loss = cross_entropy(self.output_mask, self.output_data, self.y)
 
+        # Calculate the frequency loss of each network (returns an array of size [n_networks])
         self.freq_loss = self.con_dict['freq_cost']*cp.abs(self.spiking_means-self.con_dict['freq_target'])
 
-        weight_ref = self.var_dict['W_rnn'][:,:par['n_EI'],:par['n_EI']]
-        self.reciprocal_loss = cp.mean((weight_ref > self.con_dict['reciprocal_threshold']) \
-            * cp.transpose(weight_ref > self.con_dict['reciprocal_threshold'], [0,2,1]), axis=(1,2))
-        self.reciprocal_loss = -self.con_dict['reciprocal_cost']*cp.minimum(self.con_dict['reciprocal_max'], self.reciprocal_loss)
+        # Calculate the reciprocal weights loss of each network (returns an array of size [n_networks])
+        weight_ref = self.var_dict['W_rnn'][:,:par['n_EI'],:par['n_EI']] > self.con_dict['reciprocal_threshold']
+        self.reci_loss = cp.mean(weight_ref * weight_ref.transpose([0,2,1]), axis=(1,2))
+        self.reci_loss = -self.con_dict['reciprocal_cost']*cp.minimum(self.con_dict['reciprocal_max'], self.reci_loss)
 
-        self.loss = self.task_loss + self.freq_loss + self.reciprocal_loss
+        # Aggregate the various loss terms
+        self.loss = self.task_loss + self.freq_loss + self.reci_loss
 
+        # If a network explodes due to a poorly-selected recurrent connection,
+        # set that network's loss to the loss baseline (chosen prior to the 0th iteration)
         self.loss[cp.where(cp.isnan(self.loss))] = self.con_dict['loss_baseline']
-        self.rank = cp.argsort(self.loss.astype(cp.float32))
 
+        # Rank the networks (returns [n_networks] indices)
+        self.rank = cp.argsort(self.loss.astype(cp.float32)).astype(cp.int16)
+
+        # Sort the weights if required by the current learning method
         if par['learning_method'] == 'GA':
             for name in self.var_dict.keys():
                 self.var_dict[name] = self.var_dict[name][self.rank,...]
 
-        return to_cpu(self.loss[self.rank])
 
-
-    def get_losses(self):
-        """ Return the ranked loss for each loss type """
-        return to_cpu({'task':self.task_loss[self.rank], \
-            'freq':self.freq_loss[self.rank], 'reci':self.reciprocal_loss[self.rank]})
+    def get_spiking(self):
+        """ Return the spiking means of each network (unranked) """
+        return to_cpu(self.spiking_means)
 
 
     def get_weights(self):
-        """ Return the mean of the surviving networks' weights (post-sort) """
+        """ Return the mean of the surviving networks' weights
+            (post-sort, if sorted by the current learning method) """
+        return to_cpu({name:np.mean(self.var_dict[name][:par['num_survivors'],...], axis=0) \
+            for name in self.var_dict.keys()})
 
-        return to_cpu({name:np.mean(self.var_dict[name][:par['num_survivors'],...], axis=0) for name in self.var_dict.keys()})
+
+    def get_losses(self, ranked=True):
+        """ Return the losses of each network, ranked if desired """
+        if ranked:
+            return to_cpu(self.loss[self.rank])
+        else:
+            return to_cpu(self.loss)
 
 
-    def get_performance(self):
-        """ Only output accuracy when requested """
+    def get_losses_by_type(self, ranked=True):
+        """ Return the losses of each network, separated by type,
+            and ranked if desired """
+        if ranked:
+            return to_cpu({'task':self.task_loss[self.rank], \
+                'freq':self.freq_loss[self.rank], 'reci':self.reci_loss[self.rank]})
+        else:
+            return to_cpu({'task':self.task_loss, 'freq':self.freq_loss, 'reci':self.reci_loss})
 
+
+    def get_performance(self, ranked=True):
+        """ Return the accuracies of each network, ranked if desired """
         self.task_accuracy = accuracy(self.y, self.output_data, self.output_mask)
         self.full_accuracy = accuracy(self.y, self.output_data, self.output_mask, inc_fix=True)
 
-        return to_cpu(self.task_accuracy[self.rank]), to_cpu(self.full_accuracy[self.rank])
+        if ranked:
+            return to_cpu(self.task_accuracy[self.rank]), to_cpu(self.full_accuracy[self.rank])
+        else:
+            return to_cpu(self.task_accuracy), to_cpu(self.full_accuracy)
 
 
-    def breed_models(self, epsilons=None):
-        """ Based on the first s networks in the ensemble,
-            produce more networks slightly mutated from those s """
-
-        epsilons = {k:0. for k in self.var_dict.keys()} if epsilons == None else to_gpu(epsilons)
+    def breed_models_genetic(self):
+        """ Based on the first s networks in the ensemble, produce more networks
+            slightly mutated from those s """
 
         for s, name in itertools.product(range(par['num_survivors']), self.var_dict.keys()):
-            indices = cp.arange(s+par['num_survivors'],par['n_networks'],par['num_survivors'])
+            indices = cp.arange(s+par['num_survivors'], par['n_networks'], par['num_survivors'])
 
             if par['use_crossing']:
-                mate_id = to_gpu(np.random.choice(np.setdiff1d(np.arange(par['num_survivors']), s)))
-                self.var_dict[name][indices,...] = cross(self.var_dict[name][s,...], self.var_dict[name][mate_id,...], \
-                    par['cross_rate'])
+                raise Exception('Crossing not currently implemented.')
 
             self.var_dict[name][indices,...] = mutate(self.var_dict[name][s,...], indices.shape[0], \
-                self.con_dict['mutation_rate'], self.con_dict['mutation_strength'], epsilons[name])
+                self.con_dict['mutation_rate'], self.con_dict['mutation_strength'])
 
         self.var_dict['W_rnn'] *= self.con_dict['W_rnn_mask']
-
-
-    def breed_models_evo_search(self, iteration):
-
-        """
-        Evo search without ADAM or k-NearestNeighbors weighting
-        We calculate the gradient from the previous run, and then adjust the base network parameters
-
-        self.var_dict[name][0] is considered our base network, whose parameters we will
-        adjust with evolutionary search
-        self.var_dict[name][1 thru N] are used to calculate the loss in a region nearby
-        the base network, in order to calculate the "gradient"
-        """
-
-        learning_rate = self.con_dict['ES_learning_rate']
-
-        for name in self.var_dict.keys():
-            grad_epsilon = self.var_dict[name][1:,...] - self.var_dict[name][0:1,...]
-            delta_var = grad_epsilon * self.loss[1:][:,cp.newaxis,cp.newaxis]
-            self.var_dict[name][0] -= learning_rate * cp.mean(delta_var, axis=0)
-
-            var_epsilon = cp.random.normal(0, self.con_dict['ES_sigma'], \
-                size=self.var_dict[name][1::2,...].shape).astype(cp.float16)
-            self.var_dict[name][1::2] = self.var_dict[name][0:1,...] + var_epsilon
-            self.var_dict[name][2::2] = self.var_dict[name][0:1,...] - var_epsilon
-
-        self.var_dict['W_rnn'] *= self.con_dict['W_rnn_mask']
-
-
-    def breed_models_evo_search_with_adam(self, iteration):
-
-        """
-        Evo search with ADAM and k-NearestNeighbors weighting
-        """
-
-        self.adam_par['t'] += 1
-        learning_rate = (self.con_dict['ES_learning_rate'])* \
-            cp.sqrt(1-self.adam_par['beta2']**self.adam_par['t'])/(1-self.adam_par['beta1']**self.adam_par['t'])
-
-        epsilons = cp.empty([par['n_networks']-1,1])
-
-        t0 = time.time()
-        changing_flag = False
-
-
-        #self.var_dict['b_out'] += self.out_derivative_b[cp.newaxis,:]*par['ES_learning_rate']/100
-        #self.var_dict['W_out'] += self.out_derivative_w[cp.newaxis,:,:]*par['ES_learning_rate']/100
-
-        for name in self.var_dict.keys():
-
-            if iteration == 0:
-                self.var_dict[name] = self.var_dict[name][self.rank,...]
-                min = self.loss[0]
-                changing_flag = True
-            else:
-
-                if name == 'W_out':
-                    delta_var = self.out_derivative_w/100
-                elif name == 'b_out':
-                    delta_var = self.out_derivative_b/100
-                else:
-
-                    grad_epsilon = self.var_dict[name][1:,...] - self.var_dict[name][0:1,...]
-                    NN_loss = cp.mean(self.loss[1:][self.NNb_inds], axis=1)
-                    ind_min = cp.argmin(NN_loss)
-                    ind_opp = (ind_min+1000)%2000
-                    NN_diff = NN_loss[ind_opp]-NN_loss[ind_min]
-                    delta_var = grad_epsilon[ind_min,...] * NN_diff[cp.newaxis,cp.newaxis]
-
-                if True:
-                    self.adam_par['m_' + name] = self.adam_par['beta1']*self.adam_par['m_' + name] + \
-                        (1 - self.adam_par['beta1'])*delta_var
-                    self.adam_par['v_' + name] = self.adam_par['beta2']*self.adam_par['v_' + name] + \
-                        (1 - self.adam_par['beta2'])*delta_var*delta_var
-
-                    self.var_dict[name][0] += learning_rate * self.adam_par['m_' + name]/(self.adam_par['epsilon'] + \
-                        cp.sqrt(self.adam_par['v_' + name]))
-
-                else:
-                    min = NN_loss.min()
-                    if min < self.loss[0]:
-                        ind = cp.argmin(NN_loss)
-                        self.var_dict[name][0] = self.var_dict[name][1+ind,...]
-                        changing_flag = True
-            if not (name == 'W_out' or name == 'b_out'):
-                var_epsilon = cp.random.normal(0, self.con_dict['ES_sigma'], \
-                    size=self.var_dict[name][1::2,...].shape).astype(cp.float16)
-                var_epsilon = cp.concatenate([var_epsilon, -var_epsilon], axis=0)
-                self.var_dict[name][1:,...] = self.var_dict[name][0:1,...] + var_epsilon
-
-                #print('var epsilon',var_epsilon.shape)
-                var_epsilon = cp.reshape(var_epsilon, [par['n_networks']-1,-1])
-                epsilons = cp.concatenate((epsilons, var_epsilon), axis=1)
-                #print('var epsilon 2 ', var_epsilon.shape)
-                #print('epsilon',epsilon.shape)
-            else:
-                self.var_dict[name][1:,...] = self.var_dict[name][0:1,...]
-
-        epsilons = to_cpu(epsilons)
-        self.NNbs.fit(epsilons)
-        _, self.NNb_inds = self.NNbs.kneighbors(epsilons)
-        self.NNb_inds = to_gpu(self.NNb_inds)
-
-        self.var_dict['W_rnn'] *= self.con_dict['W_rnn_mask']
-        #print('\nMin Loss: {:5.3f} from {:5.3f} | Will change: {}\n'.format(to_cpu(min), to_cpu(self.loss[0]), changing_flag))
-
 
 
 def main():
 
+    # Start the model run by loading the network controller and stimulus
     print('\nStarting model run: {}'.format(par['save_fn']))
     control = NetworkController()
     stim    = Stimulus()
 
-    # Get loss baseline
+    # Select whether to get losses ranked, according to learning method
+    if par['learning_method'] == 'GA':
+        is_ranked = True
+    elif par['learning_method'] == 'ES':
+        is_ranked = False
+    else:
+        raise Exception('Unknown learning method: {}'.format(par['learning_method']))
+
+    # Get loss baseline and update the ensemble reference accordingly
     trial_info = stim.make_batch()
-    control.run_models(trial_info['neural_input'], trial_info['desired_output'], trial_info['train_mask'])
-    loss_baseline = np.mean(control.judge_models(trial_info['desired_output'], trial_info['train_mask']))
+    control.run_models(trial_info['neural_input'])
+    control.judge_models(trial_info['desired_output'], trial_info['train_mask'])
+    loss_baseline = np.mean(control.get_losses(is_ranked))
     control.update_constant('loss_baseline', loss_baseline)
-    mean_weights_prev = control.get_weights()
 
-    # Records
-    save_record = {'iter':[], 'task_acc':[], 'full_acc':[], 'top_task_acc':[], 'top_full_acc':[], 'loss':[], \
-        'mut_str':[], 'spiking':[], 'loss_factors':[]}
+    # Establish records for training loop
+    save_record = {'iter':[], 'mean_task_acc':[], 'mean_full_acc':[], 'top_task_acc':[], \
+        'top_full_acc':[], 'loss':[], 'mut_str':[], 'spiking':[], 'loss_factors':[]}
 
+    # Run the training loop
     for i in range(par['iterations']):
 
+        # Process a batch of stimulus using the current models
         trial_info = stim.make_batch()
-        spike = control.run_models(trial_info['neural_input'], trial_info['desired_output'], trial_info['train_mask'])
-        loss  = control.judge_models(trial_info['desired_output'], trial_info['train_mask'])[:par['num_survivors']]
-        mean_weights = control.get_weights()
+        control.run_models(trial_info['neural_input'])
+        control.judge_models(trial_info['desired_output'], trial_info['train_mask'])
 
-        mutation_strength = par['mutation_strength']*(np.mean(loss)/loss_baseline)
-        mutation_strength = np.minimum(par['mutation_strength'], mutation_strength)
-        thresholds = [0.1, 0.05, 0.025, 0]
-        modifiers  = [1/2, 1/4, 1/8]
-        for t in range(len(thresholds))[:-1]:
-            if thresholds[t] > mutation_strength > thresholds[t+1]:
-                mutation_strength = par['mutation_strength']*np.mean(loss)/loss_baseline * modifiers[t]
-                break
+        # Get the current loss scores
+        loss = control.get_losses(is_ranked)
 
-        if par['use_weight_momentum']:
-            weight_momentum = {}
-            for name in mean_weights.keys():
-                weight_momentum[name] = par['momentum_scale'] * (mean_weights[name] - mean_weights_prev[name])[np.newaxis,...]
-            mean_weights_prev = mean_weights
-        else:
-            weight_momentum = None
-
-        control.update_constant('mutation_strength', mutation_strength)
+        # Apply optimization based on the current learning method
         if par['learning_method'] == 'GA':
-            control.breed_models(epsilons=weight_momentum)
+            mutation_strength = par['mutation_strength']*(np.mean(loss[:par['num_survivors']])/loss_baseline)
+            control.update_constant('mutation_strength', mutation_strength)
+            thresholds = [0.25, 0.1, 0.05, 0.025, 0]
+            modifiers  = [1/2, 1/4, 1/8, 1/16]
+            for t in range(len(thresholds))[:-1]:
+                if thresholds[t] > mutation_strength > thresholds[t+1]:
+                    mutation_strength = par['mutation_strength']*np.mean(loss)/loss_baseline * modifiers[t]
+                    break
+
+            control.breed_models_genetic()
+
         elif par['learning_method'] == 'ES':
             control.breed_models_evo_search(i)
-            #control.breed_models_evo_search_with_adam(i)
-        else:
-            raise Exception('Unknown learning method!')
 
+        # Print and save network performance as desired
         if i%par['iters_per_output'] == 0:
-            task_accuracy, full_accuracy = control.get_performance()
-            loss_dict = control.get_losses()
+            task_accuracy, full_accuracy = control.get_performance(is_ranked)
+            loss_dict = control.get_losses_by_type(is_ranked)
+            spikes    = control.get_spiking()
 
             task_loss = np.mean(loss_dict['task'][:par['num_survivors']])
             freq_loss = np.mean(loss_dict['freq'][:par['num_survivors']])
             reci_loss = np.mean(loss_dict['reci'][:par['num_survivors']])
-            #top_task_acc = task_accuracy.max()
-            #top_full_acc = full_accuracy.max()
 
-            top_task_acc = task_accuracy[0]
-            top_full_acc = full_accuracy[0]
+            mean_loss = np.mean(loss[:par['num_survivors']])
             task_acc  = np.mean(task_accuracy[:par['num_survivors']])
             full_acc  = np.mean(full_accuracy[:par['num_survivors']])
-            curr_loss = np.mean(loss[:par['num_survivors']])
-            spiking   = np.mean(spike[:par['num_survivors']])
+            spiking   = np.mean(spikes[:par['num_survivors']])
+
+            if par['learning_method'] == 'GA':
+                top_task_acc = task_accuracy.max()
+                top_full_acc = full_accuracy.max()
+            elif par['learning_method'] == 'ES':
+                top_task_acc = task_accuracy[0]
+                top_full_acc = full_accuracy[0]
 
             save_record['iter'].append(i)
             save_record['top_task_acc'].append(top_task_acc)
             save_record['top_full_acc'].append(top_full_acc)
-            save_record['task_acc'].append(task_acc)
-            save_record['full_acc'].append(full_acc)
-            save_record['loss'].append(curr_loss)
+            save_record['mean_task_acc'].append(task_acc)
+            save_record['mean_full_acc'].append(full_acc)
+            save_record['loss'].append(mean_loss)
             save_record['loss_factors'].append(loss_dict)
             save_record['mut_str'].append(mutation_strength)
             save_record['spiking'].append(spiking)
             pickle.dump(save_record, open(par['save_dir']+par['save_fn']+'.pkl', 'wb'))
             if i%(10*par['iters_per_output']) == 0:
-                print('Saving weights for iteration {}... ({})'.format(i, par['save_fn']))
+                print('Saving weights for iteration {}... ({})\n'.format(i, par['save_fn']))
                 pickle.dump(to_cpu(control.var_dict), open(par['save_dir']+par['save_fn']+'_weights.pkl', 'wb'))
-
 
             status_stringA = 'Iter: {:4} | Task Loss: {:5.3f} | Freq Loss: {:5.3f} | Reci Loss: {:5.3f}'.format( \
                 i, task_loss, freq_loss, reci_loss)
             status_stringB = ' '*11 + '| Full Loss: {:5.3f} | Mut Str: {:7.5f} | Spiking: {:5.2f} Hz'.format( \
-                curr_loss, mutation_strength, spiking)
+                mean_loss, mutation_strength, spiking)
             status_stringC = ' '*11 + '| Top Acc (Task/Full): {:5.3f} / {:5.3f}  | Mean Acc (Task/Full): {:5.3f} / {:5.3f}'.format( \
                 top_task_acc, top_full_acc, task_acc, full_acc)
             print(status_stringA + '\n' + status_stringB + '\n' + status_stringC)
