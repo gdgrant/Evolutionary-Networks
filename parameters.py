@@ -15,6 +15,8 @@ par = {
     'learning_method'       : 'GA',     # Evo search = 'ES', genetic = 'GA'
     'cell_type'             : 'rate',   # 'rate', 'adex'
     'use_stp'               : True,
+    'use_adam'              : True,     # Only for 'ES'
+    'local_learning'        : True,     # Only for 'ES' if ADAM is used
 
     'EI_prop'               : 0.8,
     'balance_EI'            : True,
@@ -100,6 +102,9 @@ def update_dependencies():
 
     par['n_networks'] += 1 if par['learning_method'] == 'ES' \
         and par['n_networks']%2 == 0 else 0
+
+    par['use_adam'] = par['use_adam'] and par['learning_method'] == 'ES'
+    par['local_learning'] = par['local_learning'] and par['use_adam']
 
     par['trial_length'] = par['dead_time'] + par['fix_time'] + +par['sample_time'] + par['delay_time'] + par['test_time']
     par['num_time_steps'] = par['trial_length'] // par['dt']
