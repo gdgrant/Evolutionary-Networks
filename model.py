@@ -426,7 +426,8 @@ def main():
         if par['learning_method'] == 'GA':
             control.breed_models(epsilons=weight_momentum)
         elif par['learning_method'] == 'ES':
-            control.breed_models_evo_search_with_adam(i)
+            control.breed_models_evo_search(i)
+            #control.breed_models_evo_search_with_adam(i)
         else:
             raise Exception('Unknown learning method!')
 
@@ -439,7 +440,7 @@ def main():
             reci_loss = np.mean(loss_dict['reci'][:par['num_survivors']])
             #top_task_acc = task_accuracy.max()
             #top_full_acc = full_accuracy.max()
-            print('Acc shape', task_accuracy.shape)
+
             top_task_acc = task_accuracy[0]
             top_full_acc = full_accuracy[0]
             task_acc  = np.mean(task_accuracy[:par['num_survivors']])
