@@ -107,7 +107,7 @@ def cross_entropy(mask, target, output, eps=1e-16):
     #print(output.shape, target.shape, mask.shape)
     #print(output.dtype, target.dtype)
 
-    return -cp.sum(mask[...,cp.newaxis]*target*cp.log(softmax(output)+eps), axis=(0,2,3))
+    return -cp.mean(mask[...,cp.newaxis]*target*cp.log(softmax(output)+eps), axis=(0,2,3))
 
 
 ### Optimization functions
