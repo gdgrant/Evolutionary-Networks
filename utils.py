@@ -106,8 +106,8 @@ def cross_entropy(mask, target, output, eps=1e-16):
     """ Calculate the cross entropy loss for a rate-based network """
     #print(output.shape, target.shape, mask.shape)
     #print(output.dtype, target.dtype)
-    
-    return -cp.mean(mask[...,cp.newaxis]*target*cp.log(softmax(output)+eps), axis=(0,2,3))
+
+    return -cp.sum(mask[...,cp.newaxis]*target*cp.log(softmax(output)+eps), axis=(0,2,3))
 
 
 ### Optimization functions
