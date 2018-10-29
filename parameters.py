@@ -53,8 +53,8 @@ par = {
 
     'input_gamma'           : 0.2,
     'rnn_gamma'             : 0.025,
-    'noise_rnn_sd'          : 0.05,
-    'noise_in_sd'           : 0.05,
+    'noise_rnn_sd'          : 0.2,
+    'noise_in_sd'           : 0.1,
 
     'dt'                    : 1,
     'membrane_constant'     : 20,
@@ -65,7 +65,7 @@ par = {
     'sample_time'           : 200,
     'delay_time'            : 300,
     'test_time'             : 200,
-    'mask_time'             : 50,
+    'mask_time'             : 40,
 
     'tau_fast'              : 200,
     'tau_slow'              : 1500,
