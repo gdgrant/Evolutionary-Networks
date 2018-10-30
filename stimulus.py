@@ -60,8 +60,8 @@ class Stimulus:
 
         trial_info = {
             'neural_input'      : np.float32(np.random.normal(0., par['noise_in'], size=[par['num_time_steps'], par['batch_size'], par['n_input']])),
-            'desired_output'    : np.zeros([par['num_time_steps'], par['batch_size'], par['n_output']], dtype=np.float32),
-            'train_mask'        : np.ones([par['num_time_steps'], par['batch_size']], dtype=np.float32)
+            'desired_output'    : np.zeros([par['num_time_steps'], par['batch_size'], par['n_output']], dtype=np.float16),
+            'train_mask'        : np.ones([par['num_time_steps'], par['batch_size']], dtype=np.float16)
         }
 
         end_dead_time       = par['dead_time']//par['dt']
