@@ -307,47 +307,40 @@ class NetworkController:
         """ Using the 0th model in the ensemble as the base network, calculate
             the gradient of the loss from the previous run and adjust the base
             network parameter accordingly, using the evolutionary search
-            algorithm.  This version does not use ADAM or k-NN weighting. """
+            algorithm.  Adam and local learning are invoked as necessary. """
+
+        if par['use_adam']:
+            self.adam_par['t'] += 1
+            learning_rate = self.con_dict['ES_learning_rate'] * \
+                cp.sqrt(1-self.adam_par['beta2']**self.adam_par['t'])/(1-self.adam_par['beta1']**self.adam_par['t'])
 
         for name in self.var_dict.keys():
             if iteration == 0:
                 self.var_dict[name] = self.var_dict[name][self.rank,...]
             else:
-                grad_epsilon = self.var_dict[name][1:,...] - self.var_dict[name][0:1,...]
-                delta_var = grad_epsilon * self.loss[1:][:,cp.newaxis,cp.newaxis]
-                self.var_dict[name][0] -= self.con_dict['ES_learning_rate'] * cp.mean(delta_var, axis=0)
+                if par['local_learning'] and name in par['local_learning_vars']:
+                    delta_var = self.local_delta[name][0]
+                else:
+                    grad_epsilon = self.var_dict[name][1:,...] - self.var_dict[name][0:1,...]
+                    delta_var = -grad_epsilon * cp.mean(self.loss[1:][:,cp.newaxis,cp.newaxis], axis=0)
 
-                var_epsilon = cp.random.normal(0, self.con_dict['ES_sigma'], \
-                    size=self.var_dict[name][1::2,...].shape).astype(cp.float16)
-                self.var_dict[name][1::2] = self.var_dict[name][0:1,...] + var_epsilon
-                self.var_dict[name][2::2] = self.var_dict[name][0:1,...] - var_epsilon
+                if par['use_adam']:
+                    self.adam_par['m_' + name] = self.adam_par['beta1']*self.adam_par['m_' + name] + \
+                        (1 - self.adam_par['beta1'])*delta_var
+                    self.adam_par['v_' + name] = self.adam_par['beta2']*self.adam_par['v_' + name] + \
+                        (1 - self.adam_par['beta2'])*cp.square(delta_var)
+                    self.var_dict[name][0] += learning_rate * self.adam_par['m_' + name]/(self.adam_par['epsilon'] + \
+                        cp.sqrt(self.adam_par['v_' + name]))
+                else:
+                    self.var_dict[name][0] += self.con_dict['ES_learning_rate'] * delta_var
+
+                if not (par['local_learning'] and name in par['local_learning_vars']):
+                    var_epsilon = cp.random.normal(0, self.con_dict['ES_sigma'], \
+                        size=self.var_dict[name][1::2,...].shape).astype(cp.float16)
+                    self.var_dict[name][1::2] = self.var_dict[name][0:1,...] + var_epsilon
+                    self.var_dict[name][2::2] = self.var_dict[name][0:1,...] - var_epsilon
 
         self.var_dict['W_rnn'] *= self.con_dict['W_rnn_mask']
-
-
-    def breed_models_evo_search_with_adam(self, iteration):
-        """ Using the 0th model in the ensemble as the base network, calculate
-            the gradient of the loss from the previous run and adjust the base
-            network parameter accordingly, using the evolutionary search
-            algorithm.  This version does includes ADAM and k-NN weighting. """
-
-        self.adam_par['t'] += 1
-        learning_rate = self.con_dict['ES_learning_rate'] * \
-            cp.sqrt(1-self.adam_par['beta2']**self.adam_par['t'])/(1-self.adam_par['beta1']**self.adam_par['t'])
-
-        for name in self.var_dict.keys():
-            if iteration == 0.:
-                self.var_dict[name] = self.var_dict[name][self.rank,...]
-            else:
-
-                if par['local_learning']:
-                    if name in ['W_out', 'b_out']:
-                        derivative = self.output_mask[...,cp.newaxis] * (softmax(self.y) - self.output_data)
-                        # Working on derivative algorithm for ADAM, local learning rule variant
-                        # Will pick this up tomorrow
-                        # Line 309 in this version, lines 106 and 333 in previous version
-
-
 
 
 def main():
