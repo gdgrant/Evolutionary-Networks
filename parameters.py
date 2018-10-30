@@ -74,9 +74,10 @@ par = {
     'delay_time'            : 300,
     'test_time'             : 200,
     'mask_time'             : 40,
+    'fixation_on'           : False,
 
     'ES_learning_rate'      : 0.01,
-    'ES_sigma'              : 0.05,
+    'ES_sigma'              : 0.01,
 
     'survival_rate'         : 0.10,
     'mutation_rate'         : 0.25,
