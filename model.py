@@ -193,12 +193,8 @@ class NetworkController:
         return spike, V, w, syn_x, syn_u
 
 
-    def judge_models(self, output_data, output_mask):
+    def judge_models(self):
         """ Determine the loss of each model, and rank them accordingly """
-
-        # Load the target data and mask to GPU
-        self.output_data = to_gpu(output_data)
-        self.output_mask = to_gpu(output_mask)
 
         # Calculate the task loss of each network (returns an array of size [n_networks])
         self.task_loss = cross_entropy(self.output_mask, self.output_data, self.y)
