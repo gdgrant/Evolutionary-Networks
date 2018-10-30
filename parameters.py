@@ -6,11 +6,11 @@ global par
 par = {
 
     'save_dir'              : './savedir/',
-    'save_fn'               : 'testing',
+    'save_fn'               : 'rate_dms_t02_a0999',
     'iters_per_output'      : 1,
 
     'batch_size'            : 256,
-    'iterations'            : 1001,
+    'iterations'            : 100001,
 
     'learning_method'       : 'TA',     # Evo search = 'ES', genetic = 'GA', thermal = 'TA'
     'cell_type'             : 'rate',   # 'rate', 'adex'
@@ -18,7 +18,7 @@ par = {
     'use_adam'              : True,     # Only for 'ES'
 
     'temperature'           : 0.2,
-    'temperature_decay'     : 0.99,
+    'temperature_decay'     : 0.999,
 
     'ES_learning_rate'      : 0.005,
     'ES_sigma'              : 0.02,

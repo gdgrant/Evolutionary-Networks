@@ -319,6 +319,10 @@ class NetworkController:
         to_mutate = to_gpu(np.setdiff1d(np.arange(par['n_networks']), samples))
         num_mutations = to_gpu((par['n_networks']-par['num_survivors'])//samples.shape[0])
 
+        uniques = list(set(samples.tolist()))
+        print('\nAnnealing diagnostics:\nNum. unique sampled networks:' +
+            ' {}\nWorst sampled network ID:     {}\n'.format(len(uniques), sorted(uniques)[-1]))
+
         for name in self.var_dict.keys():
             for i, s in enumerate(samples):
                 mutation_subset = to_mutate[i*num_mutations:(i+1)*num_mutations]
