@@ -34,7 +34,8 @@ class NetworkController:
 
         gen_constants   = ['n_networks', 'n_hidden', 'W_rnn_mask', 'EI_mask', 'noise_rnn']
         time_constants  = ['alpha_neuron', 'beta_neuron', 'dt', 'num_time_steps']
-        loss_constants  = ['freq_cost', 'freq_target', 'reciprocal_cost', 'reciprocal_max', 'reciprocal_threshold']
+        loss_constants  = ['loss_baseline', 'freq_cost', 'freq_target', 'reciprocal_cost', \
+            'reciprocal_max', 'reciprocal_threshold']
 
         stp_constants   = ['syn_x_init', 'syn_u_init', 'U', 'alpha_stf', 'alpha_std', 'stp_mod']
         adex_constants  = ['adex', 'w_init']
@@ -102,6 +103,10 @@ class NetworkController:
         if par['use_latency']:
             self.state_buffer = cp.zeros(par['state_buffer_shape'], dtype=cp.float16)
 
+        # Set up derivative recording if using local_learning
+        if par['local_learning']:
+            self.local_learning(setup=True)
+
         # Apply the EI mask to the recurrent weights
         self.W_rnn_effective = apply_EI(self.var_dict['W_rnn'], self.con_dict['EI_mask'])
 
@@ -118,6 +123,9 @@ class NetworkController:
                 self.y[t,...] = (1-self.con_dict['beta_neuron'])*self.y[t-1,...] \
                     + self.con_dict['beta_neuron']*cp.matmul(spike, self.var_dict['W_out'])
                 self.spiking_means += cp.mean(spike, axis=(1,2))*1000/self.con_dict['num_time_steps']
+
+            if par['local_learning']:
+                self.local_learning(t=t, spike=spike)
 
 
     def rnn_matmul(self, h_in, W_rnn, t):
@@ -251,6 +259,26 @@ class NetworkController:
             return to_cpu(self.task_accuracy), to_cpu(self.full_accuracy)
 
 
+    def local_learning(self, t=None, spike=None, setup=False):
+        """ Process a step of the local learning algorithm
+            (or set up the local learning environment) """
+
+        if setup:
+            self.local_delta = {}
+            self.local_delta['W_out'] = cp.zeros(self.var_dict['W_out'].shape, dtype=cp.float16)
+            if par['cell_type'] == 'rate':
+                self.local_delta['b_out'] = cp.zeros(self.var_dict['b_out'].shape, dtype=cp.float16)
+        else:
+            if t is not None and spike is not None:
+                delta = self.output_mask[t,...,cp.newaxis] * (self.output_data[t,...] - softmax(self.y[t,...]))
+                for k in range(par['n_output']):
+                    self.local_delta['W_out'][...,k] += cp.mean(delta[...,k:k+1]*spike, axis=1)
+                if par['cell_type'] == 'rate':
+                    self.local_delta['b_out'] += cp.mean(delta, axis=1, keepdims=True)
+            else:
+                raise Exception('Processing local learning requires a valid time step and spike state.')
+
+
     def breed_models_genetic(self):
         """ Based on the first s networks in the ensemble, produce more networks
             slightly mutated from those s """
@@ -260,6 +288,9 @@ class NetworkController:
 
             if par['use_crossing']:
                 raise Exception('Crossing not currently implemented.')
+
+            if par['local_learning']:
+                raise Exception('LL not currently implemented for GA.')
 
             self.var_dict[name][indices,...] = mutate(self.var_dict[name][s,...], indices.shape[0], \
                 self.con_dict['mutation_rate'], self.con_dict['mutation_strength'])
