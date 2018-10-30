@@ -7,9 +7,9 @@ par = {
 
     'save_dir'              : './savedir/',
     'save_fn'               : 'testing',
-    'iters_per_output'      : 5,
+    'iters_per_output'      : 1,
 
-    'batch_size'            : 128,
+    'batch_size'            : 256,
     'iterations'            : 1001,
 
     'learning_method'       : 'ES',     # Evo search = 'ES', genetic = 'GA'
@@ -17,9 +17,11 @@ par = {
     'use_stp'               : True,
     'use_adam'              : True,     # Only for 'ES'
 
+    'ES_learning_rate'      : 0.005,
+    'ES_sigma'              : 0.02,
+
     'local_learning'        : True,
     'local_learning_vars'   : ['W_out', 'b_out'],
-    'local_learning_div'    : 500,
 
     'EI_prop'               : 0.8,
     'balance_EI'            : True,
@@ -43,23 +45,23 @@ par = {
 
     'adam_beta1'            : 0.9,
     'adam_beta2'            : 0.999,
-    'adam_epsilon'          : 1e-5,
+    'adam_epsilon'          : 1e-8,
 
-    'n_networks'            : 5000,
+    'n_networks'            : 5001,
     'n_hidden'              : 100,
     'n_output'              : 3,
 
     'num_motion_tuned'      : 24,
-    'num_fix_tuned'         : 2,
-    'num_rule_tuned'        : 2,
+    'num_fix_tuned'         : 0,
+    'num_rule_tuned'        : 0,
     'num_receptive_fields'  : 1,
     'num_motion_dirs'       : 8,
 
-    'input_gamma'           : 0.2,
-    'rnn_gamma'             : 0.1,
-    'output_gamma'          : 0.2,
-    'noise_rnn_sd'          : 0.05,
-    'noise_in_sd'           : 0.05,
+    'input_gamma'           : 0.08,
+    'rnn_gamma'             : 0.04,
+    'output_gamma'          : 0.08,
+    'noise_rnn_sd'          : 0.2,
+    'noise_in_sd'           : 0.1,
 
     'dt'                    : 20,
     'membrane_constant'     : 100,
@@ -75,9 +77,6 @@ par = {
     'test_time'             : 200,
     'mask_time'             : 40,
     'fixation_on'           : False,
-
-    'ES_learning_rate'      : 0.01,
-    'ES_sigma'              : 0.01,
 
     'survival_rate'         : 0.10,
     'mutation_rate'         : 0.25,
@@ -115,43 +114,43 @@ def update_dependencies():
     par['n_input'] = par['num_motion_tuned']*par['num_receptive_fields'] + par['num_fix_tuned'] + par['num_rule_tuned']
     par['n_EI'] = int(par['n_hidden']*par['EI_prop'])
 
-    par['h_init_init']  = 0.1*np.ones([par['n_networks'],1,par['n_hidden']], dtype=np.float16)
-    par['W_in_init']    = np.random.gamma(par['input_gamma'], size=[par['n_networks'], par['n_input'], par['n_hidden']]).astype(np.float16)
-    par['W_rnn_init']   = np.random.gamma(par['rnn_gamma'], size=[par['n_networks'], par['n_hidden'], par['n_hidden']]).astype(np.float16)
-    par['W_out_init']   = np.random.gamma(par['output_gamma'], size=[par['n_networks'], par['n_hidden'], par['n_output']]).astype(np.float16)
+    par['h_init_init']  = 0.1*np.ones([par['n_networks'],1,par['n_hidden']], dtype=np.float32)
+    par['W_in_init']    = np.random.gamma(par['input_gamma'], size=[par['n_networks'], par['n_input'], par['n_hidden']]).astype(np.float32)
+    par['W_rnn_init']   = np.random.gamma(par['rnn_gamma'], size=[par['n_networks'], par['n_hidden'], par['n_hidden']]).astype(np.float32)
+    par['W_out_init']   = np.random.gamma(par['output_gamma'], size=[par['n_networks'], par['n_hidden'], par['n_output']]).astype(np.float32)
 
     if par['balance_EI']:
-        par['W_rnn_init'][:,par['n_EI']:,:par['n_EI']] = np.random.gamma(2*par['rnn_gamma'], size=par['W_rnn_init'][:,par['n_EI']:,:par['n_EI']].shape).astype(np.float16)
-        par['W_rnn_init'][:,:par['n_EI'],par['n_EI']:] = np.random.gamma(2*par['rnn_gamma'], size=par['W_rnn_init'][:,:par['n_EI'],par['n_EI']:].shape).astype(np.float16)
+        par['W_rnn_init'][:,par['n_EI']:,:par['n_EI']] = np.random.gamma(2*par['rnn_gamma'], size=par['W_rnn_init'][:,par['n_EI']:,:par['n_EI']].shape).astype(np.float32)
+        par['W_rnn_init'][:,:par['n_EI'],par['n_EI']:] = np.random.gamma(2*par['rnn_gamma'], size=par['W_rnn_init'][:,:par['n_EI'],par['n_EI']:].shape).astype(np.float32)
 
-    par['b_rnn_init']   = np.zeros([par['n_networks'], 1, par['n_hidden']], dtype=np.float16)
-    par['b_out_init']   = np.zeros([par['n_networks'], 1, par['n_output']], dtype=np.float16)
+    par['b_rnn_init']   = np.zeros([par['n_networks'], 1, par['n_hidden']], dtype=np.float32)
+    par['b_out_init']   = np.zeros([par['n_networks'], 1, par['n_output']], dtype=np.float32)
 
     par['W_rnn_mask']   = 1 - np.eye(par['n_hidden'])[np.newaxis,:,:]
     par['W_rnn_init']  *= par['W_rnn_mask']
 
-    par['EI_vector']    = np.ones(par['n_hidden'], dtype=np.float16)
+    par['EI_vector']    = np.ones(par['n_hidden'], dtype=np.float32)
     par['EI_vector'][par['n_EI']:] *= -1
     par['EI_mask']      = np.diag(par['EI_vector'])[np.newaxis,:,:]
 
     par['y_init_shape'] = [par['num_time_steps'], par['n_networks'], par['batch_size'], par['n_output']]
 
     par['dt_sec']       = par['dt']/1000
-    par['alpha_neuron'] = np.float16(par['dt']/par['membrane_constant'])
-    par['beta_neuron']  = np.float16(par['dt']/par['output_constant'])
-    par['noise_rnn']    = np.float16(np.sqrt(2*par['alpha_neuron'])*par['noise_rnn_sd'])
-    par['noise_in']     = np.float16(np.sqrt(2/par['alpha_neuron'])*par['noise_rnn_sd'])
+    par['alpha_neuron'] = np.float32(par['dt']/par['membrane_constant'])
+    par['beta_neuron']  = np.float32(par['dt']/par['output_constant'])
+    par['noise_rnn']    = np.float32(np.sqrt(2*par['alpha_neuron'])*par['noise_rnn_sd'])
+    par['noise_in']     = np.float32(np.sqrt(2/par['alpha_neuron'])*par['noise_rnn_sd'])
 
     par['num_survivors'] = int(par['n_networks'] * par['survival_rate']) if par['learning_method'] == 'GA' else 1
 
     ### Synaptic plasticity
     if par['use_stp']:
-        par['alpha_stf']  = np.ones((1, 1, par['n_hidden']), dtype=np.float16)
-        par['alpha_std']  = np.ones((1, 1, par['n_hidden']), dtype=np.float16)
-        par['U']          = np.ones((1, 1, par['n_hidden']), dtype=np.float16)
+        par['alpha_stf']  = np.ones((1, 1, par['n_hidden']), dtype=np.float32)
+        par['alpha_std']  = np.ones((1, 1, par['n_hidden']), dtype=np.float32)
+        par['U']          = np.ones((1, 1, par['n_hidden']), dtype=np.float32)
 
-        par['syn_x_init'] = np.zeros((1, 1, par['n_hidden']), dtype=np.float16)
-        par['syn_u_init'] = np.zeros((1, 1, par['n_hidden']), dtype=np.float16)
+        par['syn_x_init'] = np.zeros((1, 1, par['n_hidden']), dtype=np.float32)
+        par['syn_u_init'] = np.zeros((1, 1, par['n_hidden']), dtype=np.float32)
 
         for i in range(0,par['n_hidden'],2):
             par['alpha_stf'][0,0,i] = par['dt']/par['tau_slow']

@@ -60,8 +60,8 @@ class Stimulus:
 
         trial_info = {
             'neural_input'      : np.float32(np.random.normal(0., par['noise_in'], size=[par['num_time_steps'], par['batch_size'], par['n_input']])),
-            'desired_output'    : np.zeros([par['num_time_steps'], par['batch_size'], par['n_output']], dtype=np.float16),
-            'train_mask'        : np.ones([par['num_time_steps'], par['batch_size']], dtype=np.float16)
+            'desired_output'    : np.zeros([par['num_time_steps'], par['batch_size'], par['n_output']], dtype=np.float32),
+            'train_mask'        : np.ones([par['num_time_steps'], par['batch_size']], dtype=np.float32)
         }
 
         end_dead_time       = par['dead_time']//par['dt']
@@ -98,8 +98,8 @@ class Stimulus:
 
         trial_info = {
             'neural_input'      : np.random.normal(0., par['noise_in'], size=[par['num_time_steps'], par['batch_size'], par['n_input']]),
-            'desired_output'    : np.zeros([par['num_time_steps'], par['batch_size'], par['n_output']], dtype=np.float16),
-            'train_mask'        : np.ones([par['num_time_steps'], par['batch_size']], dtype=np.float16)
+            'desired_output'    : np.zeros([par['num_time_steps'], par['batch_size'], par['n_output']], dtype=np.float32),
+            'train_mask'        : np.ones([par['num_time_steps'], par['batch_size']], dtype=np.float32)
         }
 
         end_dead_time       = par['dead_time']//par['dt']
@@ -134,16 +134,16 @@ class Stimulus:
         """
         Generate tuning functions for the Postle task
         """
-        motion_tuning = np.zeros((par['num_motion_tuned'], par['num_receptive_fields'], par['num_motion_dirs']), dtype=np.float16)
-        fix_tuning    = np.zeros((par['num_fix_tuned'], par['num_receptive_fields']), dtype=np.float16)
-        rule_tuning   = np.zeros((par['num_rule_tuned'], par['num_rules']), dtype=np.float16)
+        motion_tuning = np.zeros((par['num_motion_tuned'], par['num_receptive_fields'], par['num_motion_dirs']), dtype=np.float32)
+        fix_tuning    = np.zeros((par['num_fix_tuned'], par['num_receptive_fields']), dtype=np.float32)
+        rule_tuning   = np.zeros((par['num_rule_tuned'], par['num_rules']), dtype=np.float32)
 
         # generate list of prefered directions
         # dividing neurons by 2 since two equal groups representing two modalities
-        pref_dirs = np.float16(np.arange(0,360,360/(par['num_motion_tuned']//par['num_receptive_fields'])))
+        pref_dirs = np.float32(np.arange(0,360,360/(par['num_motion_tuned']//par['num_receptive_fields'])))
 
         # generate list of possible stimulus directions
-        stim_dirs = np.float16(np.arange(0,360,360/par['num_motion_dirs']))
+        stim_dirs = np.float32(np.arange(0,360,360/par['num_motion_dirs']))
 
         for n in range(par['num_motion_tuned']//par['num_receptive_fields']):
             for i in range(len(stim_dirs)):

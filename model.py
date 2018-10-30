@@ -13,7 +13,7 @@ class NetworkController:
             self.make_adam_variables()
 
         self.size_ref = cp.ones([par['n_networks'],par['batch_size'],par['n_hidden']], \
-            dtype=cp.float16)
+            dtype=cp.float32)
 
 
     def make_variables(self):
@@ -26,7 +26,7 @@ class NetworkController:
 
         self.var_dict = {}
         for v in var_names:
-            self.var_dict[v] = to_gpu(par[v+'_init']).astype(cp.float16)
+            self.var_dict[v] = to_gpu(par[v+'_init'])
 
 
     def make_constants(self):
@@ -40,7 +40,6 @@ class NetworkController:
         stp_constants   = ['syn_x_init', 'syn_u_init', 'U', 'alpha_stf', 'alpha_std', 'stp_mod']
         adex_constants  = ['adex', 'w_init']
         lat_constants   = ['latency_mask', 'max_latency']
-        ll_constants    = ['local_learning_div']
 
         GA_constants    = ['mutation_rate', 'mutation_strength', 'cross_rate', 'loss_baseline']
         ES_constants    = ['ES_learning_rate', 'ES_sigma']
@@ -49,7 +48,6 @@ class NetworkController:
         constant_names += stp_constants if par['use_stp'] else []
         constant_names += adex_constants if par['cell_type'] == 'adex' else []
         constant_names += lat_constants if par['use_latency'] else []
-        constant_names += ll_constants if par['local_learning'] else []
         constant_names += GA_constants if par['learning_method'] == 'GA' else []
         constant_names += ES_constants if par['learning_method'] == 'ES' else []
 
@@ -62,14 +60,14 @@ class NetworkController:
         """ Pull variables for managing ADAM into GPU """
 
         self.adam_par = {}
-        self.adam_par['beta1']   = to_gpu(par['adam_beta1']).astype(cp.float16)
-        self.adam_par['beta2']   = to_gpu(par['adam_beta2']).astype(cp.float16)
-        self.adam_par['epsilon'] = to_gpu(par['adam_epsilon']).astype(cp.float16)
-        self.adam_par['t']       = to_gpu(0).astype(cp.float16)
+        self.adam_par['beta1']   = to_gpu(par['adam_beta1'])
+        self.adam_par['beta2']   = to_gpu(par['adam_beta2'])
+        self.adam_par['epsilon'] = to_gpu(par['adam_epsilon'])
+        self.adam_par['t']       = to_gpu(0)
 
         for v in self.var_dict.keys():
-            self.adam_par['m_' + v] = cp.zeros_like(self.var_dict[v][0]).astype(cp.float16)
-            self.adam_par['v_' + v] = cp.zeros_like(self.var_dict[v][0]).astype(cp.float16)
+            self.adam_par['m_' + v] = cp.zeros_like(self.var_dict[v][0])
+            self.adam_par['v_' + v] = cp.zeros_like(self.var_dict[v][0])
 
 
     def update_constant(self, name, val):
@@ -92,13 +90,13 @@ class NetworkController:
             outputs into y for later analysis and judgement """
 
         # Establish outputs and recording
-        self.y = cp.zeros(par['y_init_shape'], dtype=cp.float16)
+        self.y = cp.zeros(par['y_init_shape'], dtype=cp.float32)
         self.spiking_means = cp.zeros([par['n_networks']])
 
         # Initialize cell states
         if par['cell_type'] == 'rate':
             spike = self.var_dict['h_init'] * self.size_ref
-        else:
+        elif par['cell_type'] == 'adex':
             spike = 0. * self.size_ref
             state = self.con_dict['adex']['V_r'] * self.size_ref
             adapt = self.con_dict['w_init'] * self.size_ref
@@ -112,7 +110,7 @@ class NetworkController:
 
         # Initialize latency buffer if being used
         if par['use_latency']:
-            self.state_buffer = cp.zeros(par['state_buffer_shape'], dtype=cp.float16)
+            self.state_buffer = cp.zeros(par['state_buffer_shape'], dtype=cp.float32)
 
         # Set up derivative recording if using local_learning
         if par['local_learning']:
@@ -174,7 +172,7 @@ class NetworkController:
         h = relu((1-self.con_dict['alpha_neuron'])*h \
           + self.con_dict['alpha_neuron']*(cp.matmul(rnn_input, self.var_dict['W_in']) \
           + self.rnn_matmul(h_post, self.W_rnn_effective, t) + self.var_dict['b_rnn']) \
-          + cp.random.normal(scale=self.con_dict['noise_rnn'], size=h.shape).astype(cp.float16))
+          + cp.random.normal(scale=self.con_dict['noise_rnn'], size=h.shape).astype(cp.float32))
 
         return h, syn_x, syn_u
 
@@ -272,9 +270,9 @@ class NetworkController:
 
         if setup:
             self.local_delta = {}
-            self.local_delta['W_out'] = cp.zeros(self.var_dict['W_out'].shape, dtype=cp.float16)
+            self.local_delta['W_out'] = cp.zeros(self.var_dict['W_out'].shape, dtype=cp.float32)
             if par['cell_type'] == 'rate':
-                self.local_delta['b_out'] = cp.zeros(self.var_dict['b_out'].shape, dtype=cp.float16)
+                self.local_delta['b_out'] = cp.zeros(self.var_dict['b_out'].shape, dtype=cp.float32)
         else:
             if t is not None and spike is not None:
                 delta = self.output_mask[t,...,cp.newaxis] * (self.output_data[t,...] - softmax(self.y[t,...]))
@@ -313,7 +311,7 @@ class NetworkController:
 
         if par['use_adam']:
             self.adam_par['t'] += 1
-            learning_rate = (self.con_dict['ES_learning_rate']/cp.std(self.loss[1:])) * \
+            learning_rate = self.con_dict['ES_learning_rate'] * \
                 cp.sqrt(1-self.adam_par['beta2']**self.adam_par['t'])/(1-self.adam_par['beta1']**self.adam_par['t'])
         else:
             learning_rate = self.con_dict['ES_learning_rate']
@@ -323,10 +321,10 @@ class NetworkController:
                 self.var_dict[name] = self.var_dict[name][self.rank,...]
             else:
                 if par['local_learning'] and name in par['local_learning_vars']:
-                    delta_var = self.local_delta[name][0]/self.con_dict['local_learning_div']
+                    delta_var = self.local_delta[name][0]/self.con_dict['num_time_steps']
                 else:
                     grad_epsilon = self.var_dict[name][1:,...] - self.var_dict[name][0:1,...]
-                    delta_var = -cp.mean(grad_epsilon * self.loss[1:][:,cp.newaxis,cp.newaxis], axis=0)
+                    delta_var = -cp.mean(grad_epsilon * self.loss[1:,cp.newaxis,cp.newaxis], axis=0)/cp.std(self.loss[1:])
 
                 if par['use_adam']:
                     self.adam_par['m_' + name] = self.adam_par['beta1']*self.adam_par['m_' + name] + \
@@ -340,7 +338,7 @@ class NetworkController:
 
                 if not (par['local_learning'] and name in par['local_learning_vars']):
                     var_epsilon = cp.random.normal(0, self.con_dict['ES_sigma'], \
-                        size=self.var_dict[name][1::2,...].shape).astype(cp.float16)
+                        size=self.var_dict[name][1::2,...].shape).astype(cp.float32)
                     var_epsilon = cp.concatenate([var_epsilon, -var_epsilon], axis=0)
                     self.var_dict[name][1:,...] = self.var_dict[name][0:1,...] + var_epsilon
                 else:
@@ -404,7 +402,7 @@ def main():
 
         # Print and save network performance as desired
         if i%par['iters_per_output'] == 0:
-            task_accuracy, full_accuracy = control.get_performance(is_ranked)
+            task_accuracy, full_accuracy = control.get_performance()
             loss_dict = control.get_losses_by_type(is_ranked)
             spikes    = control.get_spiking()
 
