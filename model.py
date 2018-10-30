@@ -76,11 +76,20 @@ class NetworkController:
         self.con_dict[name] = to_gpu(val)
 
 
-    def run_models(self, input_data):
-        """ Run network ensemble based on input data, collecting network outputs into y """
+    def load_batch(self, trial_info):
+        """ Load a new batch of stimulus into the GPU """
 
-        # Establish inputs, outputs, and recording
-        self.input_data  = to_gpu(input_data)
+        # Load the input data, target data, and mask to GPU
+        self.input_data  = to_gpu(trial_info['neural_input'])
+        self.output_data = to_gpu(trial_info['desired_output'])
+        self.output_mask = to_gpu(trial_info['train_mask'])
+
+
+    def run_models(self):
+        """ Run network ensemble based on input data, collecting network
+            outputs into y for later analysis and judgement """
+
+        # Establish outputs and recording
         self.y = cp.zeros(par['y_init_shape'], dtype=cp.float16)
         self.spiking_means = cp.zeros([par['n_networks']])
 
@@ -361,9 +370,9 @@ def main():
         raise Exception('Unknown learning method: {}'.format(par['learning_method']))
 
     # Get loss baseline and update the ensemble reference accordingly
-    trial_info = stim.make_batch()
-    control.run_models(trial_info['neural_input'])
-    control.judge_models(trial_info['desired_output'], trial_info['train_mask'])
+    control.load_batch(stim.make_batch())
+    control.run_models()
+    control.judge_models()
     loss_baseline = np.mean(control.get_losses(is_ranked))
     control.update_constant('loss_baseline', loss_baseline)
 
@@ -375,14 +384,15 @@ def main():
     for i in range(par['iterations']):
 
         # Process a batch of stimulus using the current models
-        trial_info = stim.make_batch()
-        control.run_models(trial_info['neural_input'])
-        control.judge_models(trial_info['desired_output'], trial_info['train_mask'])
+        control.load_batch(stim.make_batch())
+        control.run_models()
+        control.judge_models()
 
         # Get the current loss scores
         loss = control.get_losses(is_ranked)
 
-        # Apply optimization based on the current learning method
+        # Apply optimizations based on the current learning method(s)
+        mutation_strength = 0.
         if par['learning_method'] == 'GA':
             mutation_strength = par['mutation_strength']*(np.mean(loss[:par['num_survivors']])/loss_baseline)
             control.update_constant('mutation_strength', mutation_strength)
@@ -392,7 +402,6 @@ def main():
                 if thresholds[t] > mutation_strength > thresholds[t+1]:
                     mutation_strength = par['mutation_strength']*np.mean(loss)/loss_baseline * modifiers[t]
                     break
-
             control.breed_models_genetic()
 
         elif par['learning_method'] == 'ES':
