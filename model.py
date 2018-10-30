@@ -468,7 +468,7 @@ def main():
 
             status_stringA = 'Iter: {:4} | Task Loss: {:5.3f} | Freq Loss: {:5.3f} | Reci Loss: {:5.3f}'.format( \
                 i, task_loss, freq_loss, reci_loss)
-            status_stringB = 'Opt:  {:4} | Full Loss: {:5.3f} | Mut Str: {:7.5f} | Spiking: {:5.2f} Hz'.format( \
+            status_stringB = 'Opt:  {:>4} | Full Loss: {:5.3f} | Mut Str: {:7.5f} | Spiking: {:5.2f} Hz'.format( \
                 par['learning_method'], mean_loss, mutation_strength, spiking)
             status_stringC = ' '*11 + '| Top Acc (Task/Full): {:5.3f} / {:5.3f}  | Mean Acc (Task/Full): {:5.3f} / {:5.3f}'.format( \
                 top_task_acc, top_full_acc, task_acc, full_acc)
