@@ -41,14 +41,14 @@ class NetworkController:
         adex_constants  = ['adex', 'w_init']
         lat_constants   = ['latency_mask', 'max_latency']
 
-        GA_constants    = ['mutation_rate', 'mutation_strength', 'cross_rate', 'loss_baseline']
+        GA_constants    = ['mutation_rate', 'mutation_strength', 'cross_rate', 'loss_baseline', 'temperature']
         ES_constants    = ['ES_learning_rate', 'ES_sigma']
 
         constant_names  = gen_constants + time_constants + loss_constants
         constant_names += stp_constants if par['use_stp'] else []
         constant_names += adex_constants if par['cell_type'] == 'adex' else []
         constant_names += lat_constants if par['use_latency'] else []
-        constant_names += GA_constants if par['learning_method'] == 'GA' else []
+        constant_names += GA_constants if par['learning_method'] in ['GA', 'TA'] else []
         constant_names += ES_constants if par['learning_method'] == 'ES' else []
 
         self.con_dict = {}
@@ -218,7 +218,7 @@ class NetworkController:
         self.rank = cp.argsort(self.loss.astype(cp.float32)).astype(cp.int16)
 
         # Sort the weights if required by the current learning method
-        if par['learning_method'] == 'GA':
+        if par['learning_method'] in ['GA', 'TA']:
             for name in self.var_dict.keys():
                 self.var_dict[name] = self.var_dict[name][self.rank,...]
 
@@ -292,13 +292,38 @@ class NetworkController:
             indices = cp.arange(s+par['num_survivors'], par['n_networks'], par['num_survivors'])
 
             if par['use_crossing']:
-                raise Exception('Crossing not currently implemented.')
+                raise Exception('Crossing not currently implemented for TA.')
 
             if par['local_learning']:
                 raise Exception('LL not currently implemented for GA.')
 
             self.var_dict[name][indices,...] = mutate(self.var_dict[name][s,...], indices.shape[0], \
                 self.con_dict['mutation_rate'], self.con_dict['mutation_strength'])
+
+        self.var_dict['W_rnn'] *= self.con_dict['W_rnn_mask']
+
+
+    def breed_models_thermal(self):
+        """ Based on the top networks in the ensemble, probabilistically
+            produce more networks slightly mutated from those top networks,
+            selecting the sampled networks using simulated annealing """
+
+        if par['use_crossing']:
+            raise Exception('Crossing not currently implemented for TA.')
+        if par['local_learning']:
+            raise Exception('LL not currently implemented for TA.')
+
+        prob_of_return = softmax(-self.loss[self.rank]/self.con_dict['temperature'])
+        # TODO: set replace=False but make sure we have par['num_survivors'] amount of samples with non-zero prob
+        samples = np.random.choice(par['n_networks'], size=[par['num_survivors']], p=to_cpu(prob_of_return), replace=True)
+        to_mutate = to_gpu(np.setdiff1d(np.arange(par['n_networks']), samples))
+        num_mutations = to_gpu((par['n_networks']-par['num_survivors'])//samples.shape[0])
+
+        for name in self.var_dict.keys():
+            for i, s in enumerate(samples):
+                mutation_subset = to_mutate[i*num_mutations:(i+1)*num_mutations]
+                self.var_dict[name][mutation_subset,...] = mutate(self.var_dict[name][s,...], mutation_subset.shape[0], \
+                    self.con_dict['mutation_rate'], self.con_dict['mutation_strength'])
 
         self.var_dict['W_rnn'] *= self.con_dict['W_rnn_mask']
 
@@ -355,7 +380,7 @@ def main():
     stim    = Stimulus()
 
     # Select whether to get losses ranked, according to learning method
-    if par['learning_method'] == 'GA':
+    if par['learning_method'] in ['GA', 'TA']:
         is_ranked = True
     elif par['learning_method'] == 'ES':
         is_ranked = False
@@ -386,7 +411,7 @@ def main():
 
         # Apply optimizations based on the current learning method(s)
         mutation_strength = 0.
-        if par['learning_method'] == 'GA':
+        if par['learning_method'] in ['GA', 'TA']:
             mutation_strength = par['mutation_strength']*(np.mean(loss[:par['num_survivors']])/loss_baseline)
             control.update_constant('mutation_strength', mutation_strength)
             thresholds = [0.25, 0.1, 0.05, 0]
@@ -395,7 +420,12 @@ def main():
                 if thresholds[t] > mutation_strength > thresholds[t+1]:
                     mutation_strength = par['mutation_strength']*np.mean(loss)/loss_baseline * modifiers[t]
                     break
-            control.breed_models_genetic()
+
+            if par['learning_method'] == 'GA':
+                control.breed_models_genetic()
+            elif par['learning_method'] == 'TA':
+                control.update_constant('temperature', par['temperature']*par['temperature_decay']**i)
+                control.breed_models_thermal()
 
         elif par['learning_method'] == 'ES':
             control.breed_models_evo_search(i)
@@ -415,7 +445,7 @@ def main():
             full_acc  = np.mean(full_accuracy[:par['num_survivors']])
             spiking   = np.mean(spikes[:par['num_survivors']])
 
-            if par['learning_method'] == 'GA':
+            if par['learning_method'] in ['GA', 'TA']:
                 top_task_acc = task_accuracy.max()
                 top_full_acc = full_accuracy.max()
             elif par['learning_method'] == 'ES':
@@ -438,8 +468,8 @@ def main():
 
             status_stringA = 'Iter: {:4} | Task Loss: {:5.3f} | Freq Loss: {:5.3f} | Reci Loss: {:5.3f}'.format( \
                 i, task_loss, freq_loss, reci_loss)
-            status_stringB = ' '*11 + '| Full Loss: {:5.3f} | Mut Str: {:7.5f} | Spiking: {:5.2f} Hz'.format( \
-                mean_loss, mutation_strength, spiking)
+            status_stringB = 'Opt:  {:4} | Full Loss: {:5.3f} | Mut Str: {:7.5f} | Spiking: {:5.2f} Hz'.format( \
+                par['learning_method'], mean_loss, mutation_strength, spiking)
             status_stringC = ' '*11 + '| Top Acc (Task/Full): {:5.3f} / {:5.3f}  | Mean Acc (Task/Full): {:5.3f} / {:5.3f}'.format( \
                 top_task_acc, top_full_acc, task_acc, full_acc)
             print(status_stringA + '\n' + status_stringB + '\n' + status_stringC)

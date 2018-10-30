@@ -12,15 +12,18 @@ par = {
     'batch_size'            : 256,
     'iterations'            : 1001,
 
-    'learning_method'       : 'ES',     # Evo search = 'ES', genetic = 'GA'
+    'learning_method'       : 'TA',     # Evo search = 'ES', genetic = 'GA', thermal = 'TA'
     'cell_type'             : 'rate',   # 'rate', 'adex'
     'use_stp'               : True,
     'use_adam'              : True,     # Only for 'ES'
 
+    'temperature'           : 0.2,
+    'temperature_decay'     : 0.99,
+
     'ES_learning_rate'      : 0.005,
     'ES_sigma'              : 0.02,
 
-    'local_learning'        : True,
+    'local_learning'        : False,
     'local_learning_vars'   : ['W_out', 'b_out'],
 
     'EI_prop'               : 0.8,
@@ -141,7 +144,7 @@ def update_dependencies():
     par['noise_rnn']    = np.float32(np.sqrt(2*par['alpha_neuron'])*par['noise_rnn_sd'])
     par['noise_in']     = np.float32(np.sqrt(2/par['alpha_neuron'])*par['noise_rnn_sd'])
 
-    par['num_survivors'] = int(par['n_networks'] * par['survival_rate']) if par['learning_method'] == 'GA' else 1
+    par['num_survivors'] = int(par['n_networks'] * par['survival_rate']) if par['learning_method'] in ['GA', 'TA'] else 1
 
     ### Synaptic plasticity
     if par['use_stp']:
