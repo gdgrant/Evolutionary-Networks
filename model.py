@@ -12,8 +12,7 @@ class NetworkController:
         if par['use_adam']:
             self.make_adam_variables()
 
-        self.size_ref = cp.ones([par['n_networks'],par['batch_size'],par['n_hidden']], \
-            dtype=cp.float32)
+        self.size_ref = cp.ones([par['n_networks'],par['batch_size'],par['n_hidden']], dtype=par['c_dtype'])
 
 
     def make_variables(self):
@@ -27,7 +26,6 @@ class NetworkController:
         self.var_dict = {}
         for v in var_names:
             self.var_dict[v] = to_gpu(par[v+'_init'])
-
 
     def make_constants(self):
         """ Pull constants for computation into GPU """
@@ -93,7 +91,7 @@ class NetworkController:
             outputs into y for later analysis and judgement """
 
         # Establish outputs and recording
-        self.y = cp.zeros(par['y_init_shape'], dtype=cp.float32)
+        self.y = cp.zeros(par['y_init_shape'], dtype=par['c_dtype'])
         self.spiking_means = cp.zeros([par['n_networks']])
 
         # Initialize cell states
@@ -113,7 +111,7 @@ class NetworkController:
 
         # Initialize latency buffer if being used
         if par['use_latency']:
-            self.state_buffer = cp.zeros(par['state_buffer_shape'], dtype=cp.float32)
+            self.state_buffer = cp.zeros(par['state_buffer_shape'], dtype=par['c_dtype'])
 
         # Set up derivative recording if using local_learning
         if par['local_learning']:
@@ -127,13 +125,13 @@ class NetworkController:
         for t in range(par['num_time_steps']):
             if par['cell_type'] == 'rate':
                 spike, syn_x, syn_u = self.rate_recurrent_cell(spike, self.input_data[t], syn_x, syn_u, t)
-                self.y[t,...] = cp.matmul(spike, self.var_dict['W_out']) + self.var_dict['b_out']
+                self.y[t,...] = matmul(spike, self.var_dict['W_out']) + self.var_dict['b_out']
                 self.spiking_means += cp.mean(spike, axis=(1,2))/self.con_dict['num_time_steps']
 
             elif par['cell_type'] == 'adex':
-                spike, state, adapt = self.AdEx_recurrent_cell(spike, state, adapt, self.input_data[t], syn_x, syn_u, t)
+                spike, state, adapt, syn_x, syn_u = self.AdEx_recurrent_cell(spike, state, adapt, self.input_data[t], syn_x, syn_u, t)
                 self.y[t,...] = (1-self.con_dict['beta_neuron'])*self.y[t-1,...] \
-                    + self.con_dict['beta_neuron']*cp.matmul(spike, self.var_dict['W_out'])
+                    + self.con_dict['beta_neuron']*matmul(spike, self.var_dict['W_out'])
                 self.spiking_means += cp.mean(spike, axis=(1,2))*1000/self.con_dict['num_time_steps']
 
             if par['local_learning']:
@@ -173,9 +171,9 @@ class NetworkController:
 
         # Calculate new hidden state
         h = relu((1-self.con_dict['alpha_neuron'])*h \
-          + self.con_dict['alpha_neuron']*(cp.matmul(rnn_input, self.var_dict['W_in']) \
+          + self.con_dict['alpha_neuron']*(matmul(rnn_input, self.var_dict['W_in']) \
           + self.rnn_matmul(h_post, self.W_rnn_effective, t) + self.var_dict['b_rnn']) \
-          + cp.random.normal(scale=self.con_dict['noise_rnn'], size=h.shape).astype(cp.float32))
+          + cp.random.normal(scale=self.con_dict['noise_rnn'], size=h.shape).astype(par['c_dtype']))
 
         return h, syn_x, syn_u
 
@@ -190,7 +188,7 @@ class NetworkController:
             self.con_dict, par['use_stp'], par['n_hidden'])
 
         # Calculate the current incident on the hidden neurons
-        I = cp.matmul(rnn_input, self.var_dict['W_in']) + self.rnn_matmul(spike_post, self.W_rnn_effective)
+        I = matmul(rnn_input, self.var_dict['W_in']) + self.rnn_matmul(spike_post, self.W_rnn_effective, t)
         V, w, spike = run_adex(V, w, I, self.con_dict['adex'])
 
         return spike, V, w, syn_x, syn_u
@@ -276,9 +274,9 @@ class NetworkController:
 
         if setup:
             self.local_delta = {}
-            self.local_delta['W_out'] = cp.zeros(self.var_dict['W_out'].shape, dtype=cp.float32)
+            self.local_delta['W_out'] = cp.zeros(self.var_dict['W_out'].shape, dtype=par['w_dtype'])
             if par['cell_type'] == 'rate':
-                self.local_delta['b_out'] = cp.zeros(self.var_dict['b_out'].shape, dtype=cp.float32)
+                self.local_delta['b_out'] = cp.zeros(self.var_dict['b_out'].shape, dtype=par['w_dtype'])
         else:
             if t is not None and spike is not None:
                 delta = self.output_mask[t,...,cp.newaxis] * (self.output_data[t,...] - softmax(self.y[t,...]))
@@ -341,6 +339,8 @@ class NetworkController:
                     = mutate(self.var_dict[name][i,...], num_mutations, \
                     self.con_dict['mutation_rate'], self.con_dict['mutation_strength'])
 
+            self.var_dict[name] = self.var_dict[name].astype(par['w_dtype'])
+
         self.var_dict['W_rnn'] *= self.con_dict['W_rnn_mask']
 
 
@@ -384,6 +384,8 @@ class NetworkController:
                     self.var_dict[name][1:,...] = self.var_dict[name][0:1,...] + var_epsilon
                 else:
                     self.var_dict[name][1:,...] = self.var_dict[name][0:1,...]
+
+                self.var_dict[name] = self.var_dict[name].astype(par['w_dtype'])
 
         self.var_dict['W_rnn'] *= self.con_dict['W_rnn_mask']
 
@@ -489,7 +491,7 @@ def main():
                 par['learning_method'], mean_loss, mutation_strength, spiking)
             status_stringC = 'S/O:  {:4} | Top Acc (Task/Full): {:5.3f} / {:5.3f}  | Mean Acc (Task/Full): {:5.3f} / {:5.3f}'.format( \
                 int(time.time()-t0), top_task_acc, top_full_acc, task_acc, full_acc)
-            print(status_stringA + '\n' + status_stringB + '\n' + status_stringC)
+            print(status_stringA + '\n' + status_stringB + '\n' + status_stringC + '\n')
             t0 = time.time()
 
 if __name__ == '__main__':
