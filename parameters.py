@@ -25,6 +25,7 @@ par = {
 
     'local_learning'        : False,
     'local_learning_vars'   : ['W_out', 'b_out'],
+    'local_learning_rate'   : 0.005,
 
     'EI_prop'               : 0.8,
     'balance_EI'            : True,

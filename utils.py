@@ -27,7 +27,7 @@ def to_cpu(x):
             return cp.asnumpy(x.astype(cp.float32))
     else:
         if type(x) == dict:
-            return {k:x.astype(cp.float32) for (k, a) in x.items()}
+            return {k:a.astype(cp.float32) for (k, a) in x.items()}
         else:
             return x.astype(cp.float32)
 
@@ -124,7 +124,8 @@ def cross(var1, var2, rate):
 def mutate(var, num, rate, scale, epsilon=0.):
     """ Mutates a given variable by a given rate and scale,
         generating as many offspring as num """
-    mutation_mask = cp.random.random(size=[num, *var.shape], dtype=np.float32).astype(cp.float32)
+    #mutation_mask = cp.random.random(size=[num, *var.shape], dtype=np.float32).astype(cp.float32)
+    mutation_mask = cp.random.random(size=[num, *var.shape]).astype(cp.float32)
     mutation = cp.random.normal(loc=epsilon, scale=scale, size=[num, *var.shape])
     return var[cp.newaxis,...] + mutation*mutation_mask
 

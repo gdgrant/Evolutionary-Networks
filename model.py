@@ -44,12 +44,15 @@ class NetworkController:
         GA_constants    = ['mutation_rate', 'mutation_strength', 'cross_rate', 'loss_baseline', 'temperature']
         ES_constants    = ['ES_learning_rate', 'ES_sigma']
 
+        local_learning_constants = ['local_learning_rate']
+
         constant_names  = gen_constants + time_constants + loss_constants
         constant_names += stp_constants if par['use_stp'] else []
         constant_names += adex_constants if par['cell_type'] == 'adex' else []
         constant_names += lat_constants if par['use_latency'] else []
         constant_names += GA_constants if par['learning_method'] in ['GA', 'TA'] else []
         constant_names += ES_constants if par['learning_method'] == 'ES' else []
+        constant_names += local_learning_constants if par['local_learning'] else []
 
         self.con_dict = {}
         for c in constant_names:
@@ -212,15 +215,18 @@ class NetworkController:
 
         # If a network explodes due to a poorly-selected recurrent connection,
         # set that network's loss to the loss baseline (chosen prior to the 0th iteration)
-        self.loss[cp.where(cp.isnan(self.loss))] = self.con_dict['loss_baseline']
+        #self.loss[cp.where(cp.isnan(self.loss))] = self.con_dict['loss_baseline']
 
         # Rank the networks (returns [n_networks] indices)
         self.rank = cp.argsort(self.loss.astype(cp.float32)).astype(cp.int16)
 
         # Sort the weights if required by the current learning method
         if par['learning_method'] in ['GA', 'TA']:
+            # TODO: should we rank self.loss here for consistency?
             for name in self.var_dict.keys():
                 self.var_dict[name] = self.var_dict[name][self.rank,...]
+                if par['local_learning'] and name in par['local_learning_vars']:
+                    self.local_delta[name] = self.local_delta[name][self.rank,...]
 
 
     def get_spiking(self):
@@ -277,9 +283,9 @@ class NetworkController:
             if t is not None and spike is not None:
                 delta = self.output_mask[t,...,cp.newaxis] * (self.output_data[t,...] - softmax(self.y[t,...]))
                 for k in range(par['n_output']):
-                    self.local_delta['W_out'][...,k] += cp.mean(delta[...,k:k+1]*spike, axis=1)
+                    self.local_delta['W_out'][...,k] += cp.mean(delta[...,k:k+1]*spike, axis=1)/self.con_dict['num_time_steps']
                 if par['cell_type'] == 'rate':
-                    self.local_delta['b_out'] += cp.mean(delta, axis=1, keepdims=True)
+                    self.local_delta['b_out'] += cp.mean(delta, axis=1, keepdims=True)/self.con_dict['num_time_steps']
             else:
                 raise Exception('Processing local learning requires a valid time step and spike state.')
 
@@ -303,7 +309,7 @@ class NetworkController:
         self.var_dict['W_rnn'] *= self.con_dict['W_rnn_mask']
 
 
-    def breed_models_thermal(self):
+    def breed_models_thermal(self, iteration):
         """ Based on the top networks in the ensemble, probabilistically
             produce more networks slightly mutated from those top networks,
             selecting the sampled networks using simulated annealing """
@@ -311,22 +317,28 @@ class NetworkController:
         if par['use_crossing']:
             raise Exception('Crossing not currently implemented for TA.')
         if par['local_learning']:
-            raise Exception('LL not currently implemented for TA.')
+            # perform local learning every even iteration, and thermal annealing every odd iteration
+            for name in par['local_learning_vars']:
+                self.var_dict[name] += self.con_dict['local_learning_rate'] * self.local_delta[name]
 
-        prob_of_return = softmax(-self.loss[self.rank]/self.con_dict['temperature'])
+        corrected_loss = self.loss[self.rank]
+        corrected_loss[cp.where(cp.isnan(self.loss))] = 999.
+        prob_of_return = softmax(-corrected_loss/self.con_dict['temperature'])
         # TODO: set replace=False but make sure we have par['num_survivors'] amount of samples with non-zero prob
         samples = np.random.choice(par['n_networks'], size=[par['num_survivors']], p=to_cpu(prob_of_return), replace=True)
-        to_mutate = to_gpu(np.setdiff1d(np.arange(par['n_networks']), samples))
-        num_mutations = to_gpu((par['n_networks']-par['num_survivors'])//samples.shape[0])
+        num_mutations = (par['n_networks']-par['num_survivors'])//par['num_survivors']
 
-        uniques = list(set(samples.tolist()))
-        print('\nAnnealing diagnostics:\nNum. unique sampled networks:' +
-            ' {}\nWorst sampled network ID:     {}\n'.format(len(uniques), sorted(uniques)[-1]))
+        #uniques = list(set(samples.tolist()))
+        #print('\nAnnealing diagnostics:\nNum. unique sampled networks:' +
+        #    ' {}\nWorst sampled network ID:     {}\n'.format(len(uniques), sorted(uniques)[-1]))
 
         for name in self.var_dict.keys():
-            for i, s in enumerate(samples):
-                mutation_subset = to_mutate[i*num_mutations:(i+1)*num_mutations]
-                self.var_dict[name][mutation_subset,...] = mutate(self.var_dict[name][s,...], mutation_subset.shape[0], \
+            self.var_dict[name][:par['num_survivors']] = self.var_dict[name][samples]
+            for i in range(par['num_survivors']):
+                #mutation_subset = range(par['num_survivors']+i*num_mutations, \
+                #    par['num_survivors']+(i+1)*num_mutations)
+                self.var_dict[name][par['num_survivors']+i*num_mutations:par['num_survivors']+(i+1)*num_mutations,...] \
+                    = mutate(self.var_dict[name][i,...], num_mutations, \
                     self.con_dict['mutation_rate'], self.con_dict['mutation_strength'])
 
         self.var_dict['W_rnn'] *= self.con_dict['W_rnn_mask']
@@ -395,7 +407,7 @@ def main():
     control.load_batch(stim.make_batch())
     control.run_models()
     control.judge_models()
-    loss_baseline = np.mean(control.get_losses(is_ranked))
+    loss_baseline = np.nanmean(control.get_losses(is_ranked))
     control.update_constant('loss_baseline', loss_baseline)
 
     # Establish records for training loop
@@ -417,20 +429,20 @@ def main():
         # Apply optimizations based on the current learning method(s)
         mutation_strength = 0.
         if par['learning_method'] in ['GA', 'TA']:
-            mutation_strength = par['mutation_strength']*(np.mean(loss[:par['num_survivors']])/loss_baseline)
+            mutation_strength = par['mutation_strength']*(np.nanmean(loss[:par['num_survivors']])/loss_baseline)
             control.update_constant('mutation_strength', mutation_strength)
             thresholds = [0.25, 0.1, 0.05, 0]
             modifiers  = [1/2, 1/4, 1/8]
             for t in range(len(thresholds))[:-1]:
                 if thresholds[t] > mutation_strength > thresholds[t+1]:
-                    mutation_strength = par['mutation_strength']*np.mean(loss)/loss_baseline * modifiers[t]
+                    mutation_strength = par['mutation_strength']*np.nanmean(loss)/loss_baseline * modifiers[t]
                     break
 
             if par['learning_method'] == 'GA':
                 control.breed_models_genetic()
             elif par['learning_method'] == 'TA':
                 control.update_constant('temperature', par['temperature']*par['temperature_decay']**i)
-                control.breed_models_thermal()
+                control.breed_models_thermal(i)
 
         elif par['learning_method'] == 'ES':
             control.breed_models_evo_search(i)
