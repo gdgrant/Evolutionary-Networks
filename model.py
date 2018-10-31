@@ -402,6 +402,7 @@ def main():
     save_record = {'iter':[], 'mean_task_acc':[], 'mean_full_acc':[], 'top_task_acc':[], \
         'top_full_acc':[], 'loss':[], 'mut_str':[], 'spiking':[], 'loss_factors':[]}
 
+    t0 = time.time()
     # Run the training loop
     for i in range(par['iterations']):
 
@@ -474,9 +475,10 @@ def main():
                 i, task_loss, freq_loss, reci_loss)
             status_stringB = 'Opt:  {:>4} | Full Loss: {:5.3f} | Mut Str: {:7.5f} | Spiking: {:5.2f} Hz'.format( \
                 par['learning_method'], mean_loss, mutation_strength, spiking)
-            status_stringC = ' '*11 + '| Top Acc (Task/Full): {:5.3f} / {:5.3f}  | Mean Acc (Task/Full): {:5.3f} / {:5.3f}'.format( \
-                top_task_acc, top_full_acc, task_acc, full_acc)
+            status_stringC = 'S/O:  {:4} | Top Acc (Task/Full): {:5.3f} / {:5.3f}  | Mean Acc (Task/Full): {:5.3f} / {:5.3f}'.format( \
+                int(time.time()-t0), top_task_acc, top_full_acc, task_acc, full_acc)
             print(status_stringA + '\n' + status_stringB + '\n' + status_stringC)
+            t0 = time.time()
 
 if __name__ == '__main__':
     main()
