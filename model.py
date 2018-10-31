@@ -326,7 +326,7 @@ class NetworkController:
         prob_of_return = softmax(-corrected_loss/self.con_dict['temperature'])
         # TODO: set replace=False but make sure we have par['num_survivors'] amount of samples with non-zero prob
         samples = np.random.choice(par['n_networks'], size=[par['num_survivors']], p=to_cpu(prob_of_return), replace=True)
-        num_mutations = to_gpu((par['n_networks']-par['num_survivors'])//samples.shape[0])
+        num_mutations = (par['n_networks']-par['num_survivors'])//par['num_survivors']
 
         #uniques = list(set(samples.tolist()))
         #print('\nAnnealing diagnostics:\nNum. unique sampled networks:' +
@@ -335,8 +335,8 @@ class NetworkController:
         for name in self.var_dict.keys():
             self.var_dict[name][:par['num_survivors']] = self.var_dict[name][samples]
             for i in range(par['num_survivors']):
-                mutation_subset = range(to_gpu(par['num_survivors']+i*num_mutations), \
-                    to_gpu(par['num_survivors']+(i+1)*num_mutations))
+                mutation_subset = range(par['num_survivors']+i*num_mutations, \
+                    par['num_survivors']+(i+1)*num_mutations)
                 self.var_dict[name][mutation_subset,...] = mutate(self.var_dict[name][i,...], num_mutations, \
                     self.con_dict['mutation_rate'], self.con_dict['mutation_strength'])
 
