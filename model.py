@@ -12,7 +12,7 @@ class NetworkController:
         if par['use_adam']:
             self.make_adam_variables()
 
-        self.size_ref = cp.ones([par['n_networks'],par['batch_size'],par['n_hidden']], dtype=par['c_dtype'])
+        self.size_ref = cp.ones([par['n_networks'],par['batch_size'],par['n_hidden'],1], dtype=par['c_dtype'])
 
 
     def make_variables(self):
@@ -322,8 +322,11 @@ class NetworkController:
         corrected_loss = self.loss[self.rank]
         corrected_loss[cp.where(cp.isnan(self.loss))] = 999.
         prob_of_return = softmax(-corrected_loss/self.con_dict['temperature'])
+        # normalizing samples so all probabilities sum to 0
+        prob_of_samples = to_cpu(prob_of_return)
+        prob_of_samples /= cp.sum(prob_of_samples)
         # TODO: set replace=False but make sure we have par['num_survivors'] amount of samples with non-zero prob
-        samples = np.random.choice(par['n_networks'], size=[par['num_survivors']], p=to_cpu(prob_of_return), replace=True)
+        samples = np.random.choice(par['n_networks'], size=[par['num_survivors']], p=prob_of_samples, replace=True)
         num_mutations = (par['n_networks']-par['num_survivors'])//par['num_survivors']
 
         #uniques = list(set(samples.tolist()))

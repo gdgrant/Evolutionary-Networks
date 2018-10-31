@@ -64,6 +64,8 @@ def synaptic_plasticity(h, syn_x, syn_u, constants, use_stp, hidden_size):
 
     if use_stp:
         syn_x += constants['alpha_std']*(1-syn_x) - constants['stp_mod']*syn_u*syn_x*h
+        print(syn_u.shape)
+        print(h.shape)
         syn_u += constants['alpha_stf']*(constants['U']-syn_u) + constants['stp_mod']*constants['U']*(1-syn_u)*h
         syn_x = cp.minimum(1., relu(syn_x))
         syn_u = cp.minimum(1., relu(syn_u))
