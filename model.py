@@ -320,7 +320,6 @@ class NetworkController:
             # perform local learning every even iteration, and thermal annealing every odd iteration
             for name in par['local_learning_vars']:
                 self.var_dict[name] += self.con_dict['local_learning_rate'] * self.local_delta[name]
-            return
 
         corrected_loss = self.loss[self.rank]
         corrected_loss[cp.where(cp.isnan(self.loss))] = 999.
@@ -336,7 +335,8 @@ class NetworkController:
         for name in self.var_dict.keys():
             self.var_dict[name][:par['num_survivors']] = self.var_dict[name][samples]
             for i in range(par['num_survivors']):
-                mutation_subset = range(par['num_survivors']+i*num_mutations,  par['num_survivors']+(i+1)*num_mutations)
+                mutation_subset = range(to_gpu(par['num_survivors']+i*num_mutations), \
+                    to_gpu(par['num_survivors']+(i+1)*num_mutations))
                 self.var_dict[name][mutation_subset,...] = mutate(self.var_dict[name][i,...], num_mutations, \
                     self.con_dict['mutation_rate'], self.con_dict['mutation_strength'])
 
