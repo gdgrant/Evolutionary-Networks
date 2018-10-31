@@ -170,10 +170,20 @@ class NetworkController:
             self.con_dict, par['use_stp'], par['n_hidden'])
 
         # Calculate new hidden state
+
+        print("h.shape")
+        print(h.shape)
+        print("rnn_input shape")
+        print(rnn_input.shape)
+        print("w_in shape")
+        print(self.var_dict['W_in'].shape)
+
+
         h = relu((1-self.con_dict['alpha_neuron'])*h \
-          + self.con_dict['alpha_neuron']*(matmul(rnn_input, self.var_dict['W_in']) \
-          + self.rnn_matmul(h_post, self.W_rnn_effective, t) + self.var_dict['b_rnn']) \
-          + cp.random.normal(scale=self.con_dict['noise_rnn'], size=h.shape).astype(par['c_dtype']))
+            # Error lies in next line... matmul() in utils should be okay with those shapes, obviously not...
+          + self.con_dict['alpha_neuron']*(matmul(rnn_input, self.var_dict['W_in'])))
+          # + self.rnn_matmul(h_post, self.W_rnn_effective, t) + self.var_dict['b_rnn'])
+          # + cp.random.normal(scale=self.con_dict['noise_rnn'], size=h.shape).astype(par['c_dtype']))
 
         return h, syn_x, syn_u
 

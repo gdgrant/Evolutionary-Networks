@@ -38,14 +38,25 @@ def matmul(a, b, l=False):
     """ Does matrix multiplication as a @ b, accounting for
         whether either is of dtype=int8.  'l' indicates whether
         this matrix operation is being used for a latency weight matrix """
-    if cp.int8 in [a.dtype, b.dtype]:
-        # Set up for a=state, b=weights
-        if not l:
-            return cp.sum(a[...,cp.newaxis]*b[:,cp.newaxis,...], axis=-2, dtype=cp.float16)
-        else:
-            return cp.sum(a[...,cp.newaxis]*b[:,:,cp.newaxis,...], axis=-2, dtype=cp.float16)
-    else:
-        return cp.matmul(a, b)
+    a = a[...,0]
+    b = b[:,0,:,:]
+    return cp.matmul(a, b)
+
+# TODO:  fix matmuls in following function
+# def matmul(a, b, l=False):
+#     """ Does matrix multiplication as a @ b, accounting for
+#         whether either is of dtype=int8.  'l' indicates whether
+#         this matrix operation is being used for a latency weight matrix """
+#     if cp.int8 in [a.dtype, b.dtype]:
+#         # Set up for a=state, b=weights
+#         if not l:
+#             return cp.sum(a[...,cp.newaxis]*b[:,cp.newaxis,...], axis=-2, dtype=cp.float16)
+#         else:
+#             return cp.sum(a[...,cp.newaxis]*b[:,:,cp.newaxis,...], axis=-2, dtype=cp.float16)
+#     else:
+#         a = a[...,0]
+#         b = b[:,0,:,:]
+#         return cp.matmul(a, b)
 
 
 def relu(x):
@@ -68,8 +79,6 @@ def synaptic_plasticity(h, syn_x, syn_u, constants, use_stp, hidden_size):
 
     if use_stp:
         syn_x += constants['alpha_std']*(1-syn_x) - constants['stp_mod']*syn_u*syn_x*h
-        print(syn_u.shape)
-        print(h.shape)
         syn_u += constants['alpha_stf']*(constants['U']-syn_u) + constants['stp_mod']*constants['U']*(1-syn_u)*h
         syn_x = cp.minimum(1., relu(syn_x))
         syn_u = cp.minimum(1., relu(syn_u))

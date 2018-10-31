@@ -19,7 +19,8 @@ class Stimulus:
         if par['cell_type'] != 'rate':
             trial_info = self.make_spiking(trial_info)
 
-        trial_info['neural_input']   = trial_info['neural_input'][:,np.newaxis,...]
+        trial_info['neural_input']   = trial_info['neural_input'][:,np.newaxis,:,:,np.newaxis]
+        # might have to make next two lines consistent with above
         trial_info['desired_output'] = trial_info['desired_output'][:,np.newaxis,...]
         trial_info['train_mask']     = trial_info['train_mask'][:,np.newaxis,...]
 
