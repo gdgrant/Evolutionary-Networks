@@ -22,21 +22,31 @@ def to_cpu(x):
     """ Move cupy arrays (or dicts of arrays) to CPU """
     if len(sys.argv) > 1:
         if type(x) == dict:
-            return {k:cp.asnumpy(a.astype(cp.float32)) for (k, a) in x.items()}
+            return {k:cp.asnumpy(a) for (k, a) in x.items()}
         else:
-            return cp.asnumpy(x.astype(cp.float32))
+            return cp.asnumpy(x)
     else:
         if type(x) == dict:
-            return {k:a.astype(cp.float32) for (k, a) in x.items()}
+            return {k:a for (k, a) in x.items()}
         else:
-            return x.astype(cp.float32)
+            return x
 
 
 ### Network functions
 
+def matmul(a, b):
+    """ Does matrix multiplication as a @ b, accounting for
+        whether either is of dtype=int8 """
+    if cp.int8 in [a.dtype, b.dtype]:
+        # Set up for a=state, b=weights
+        return cp.sum(a[...,cp.newaxis]*b[:,cp.newaxis,...], axis=-2, dtype=cp.float16)
+    else:
+        return cp.matmul(a, b)
+
+
 def relu(x):
     """ Performs relu on x """
-    return cp.maximum(0., x)
+    return cp.maximum(0., x, dtype=x.dtype)
 
 def softmax(x, a=-1):
     """ Performs stable softmax on x, across the last axis by default """
@@ -59,7 +69,7 @@ def synaptic_plasticity(h, syn_x, syn_u, constants, use_stp, hidden_size):
         syn_u = cp.minimum(1., relu(syn_u))
         h_post = syn_u*syn_x*h
     else:
-        h_post = h*cp.ones([1,1,hidden_size], dtype=cp.float32)
+        h_post = h*cp.ones([1,1,hidden_size], dtype=h.dtype)
 
     return h_post, syn_x, syn_u
 
@@ -77,7 +87,7 @@ def run_adex(V, w, I, constants):
     w_next      = adex_adaptation(V, w, constants)
     V, w, spike = adex_spike(V_next, w_next, constants)
 
-    return V.astype(cp.float32), w.astype(cp.float32), spike.astype(cp.float32)
+    return V.astype(cp.float32), w.astype(cp.float32), spike.astype(cp.int8)
 
 def adex_membrane(V, w, I, c):
     """ Calculate the new membrane potential """
