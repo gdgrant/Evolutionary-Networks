@@ -109,8 +109,8 @@ def update_parameters(updates):
 def update_dependencies():
 
     if par['datatype'] == 'float32':
-        par['w_dtype'] = np.float32
-        par['c_dtype'] = np.float32
+        par['w_dtype'] = np.float32     # Weight datatype
+        par['c_dtype'] = np.float32     # Cell computation datatype
     elif par['datatype'] == 'float16':
         par['w_dtype'] = np.float16
         par['c_dtype'] = np.float16
