@@ -11,7 +11,7 @@ par = {
     'datatype'              : 'int8',    # 'float32', 'float16', 'int8'
 
     'batch_size'            : 256,
-    'iterations'            : 100001,
+    'iterations'            : 128,
 
     'learning_method'       : 'ES',     # Evo search = 'ES', genetic = 'GA', thermal = 'TA'
     'cell_type'             : 'adex',   # 'rate', 'adex'
@@ -133,17 +133,17 @@ def update_dependencies():
     par['n_input'] = par['num_motion_tuned']*par['num_receptive_fields'] + par['num_fix_tuned'] + par['num_rule_tuned']
     par['n_EI'] = int(par['n_hidden']*par['EI_prop'])
 
-    par['h_init_init']  = 0.1*np.ones([par['n_networks'],1,par['n_hidden']], dtype=par['c_dtype'])
-    par['W_in_init']    = np.random.gamma(par['input_gamma'], size=[par['n_networks'], par['n_input'], par['n_hidden']]).astype(par['w_dtype'])
-    par['W_rnn_init']   = np.random.gamma(par['rnn_gamma'], size=[par['n_networks'], par['n_hidden'], par['n_hidden']]).astype(par['w_dtype'])
-    par['W_out_init']   = np.random.gamma(par['output_gamma'], size=[par['n_networks'], par['n_hidden'], par['n_output']]).astype(par['w_dtype'])
+    par['h_init_init']  = 0.1*np.ones([par['n_networks'],1,par['n_hidden'],1], dtype=par['c_dtype'])
+    par['W_in_init']    = np.random.gamma(par['input_gamma'], size=[par['n_networks'], 1, par['n_input'], par['n_hidden']]).astype(par['w_dtype'])
+    par['W_rnn_init']   = np.random.gamma(par['rnn_gamma'], size=[par['n_networks'], 1, par['n_hidden'], par['n_hidden']]).astype(par['w_dtype'])
+    par['W_out_init']   = np.random.gamma(par['output_gamma'], size=[par['n_networks'], 1, par['n_hidden'], par['n_output']]).astype(par['w_dtype'])
 
     if par['balance_EI']:
         par['W_rnn_init'][:,par['n_EI']:,:par['n_EI']] = np.random.gamma(2*par['rnn_gamma'], size=par['W_rnn_init'][:,par['n_EI']:,:par['n_EI']].shape).astype(par['w_dtype'])
         par['W_rnn_init'][:,:par['n_EI'],par['n_EI']:] = np.random.gamma(2*par['rnn_gamma'], size=par['W_rnn_init'][:,:par['n_EI'],par['n_EI']:].shape).astype(par['w_dtype'])
 
-    par['b_rnn_init']   = np.zeros([par['n_networks'], 1, par['n_hidden']], dtype=par['w_dtype'])
-    par['b_out_init']   = np.zeros([par['n_networks'], 1, par['n_output']], dtype=par['w_dtype'])
+    par['b_rnn_init']   = np.zeros([par['n_networks'], 1, par['n_hidden'], 1], dtype=par['w_dtype'])
+    par['b_out_init']   = np.zeros([par['n_networks'], 1, par['n_output'], 1], dtype=par['w_dtype'])
 
     par['W_rnn_mask']   = 1 - np.eye(par['n_hidden'])[np.newaxis,:,:].astype(par['w_dtype'])
     par['W_rnn_init']  *= par['W_rnn_mask']
@@ -164,25 +164,25 @@ def update_dependencies():
 
     ### Synaptic plasticity
     if par['use_stp']:
-        par['alpha_stf']  = np.ones((1, 1, par['n_hidden']), dtype=par['c_dtype'])
-        par['alpha_std']  = np.ones((1, 1, par['n_hidden']), dtype=par['c_dtype'])
-        par['U']          = np.ones((1, 1, par['n_hidden']), dtype=par['c_dtype'])
+        par['alpha_stf']  = np.ones((1, 1, par['n_hidden'], 1), dtype=par['c_dtype'])
+        par['alpha_std']  = np.ones((1, 1, par['n_hidden'], 1), dtype=par['c_dtype'])
+        par['U']          = np.ones((1, 1, par['n_hidden'], 1), dtype=par['c_dtype'])
 
-        par['syn_x_init'] = np.zeros((1, 1, par['n_hidden']), dtype=par['c_dtype'])
-        par['syn_u_init'] = np.zeros((1, 1, par['n_hidden']), dtype=par['c_dtype'])
+        par['syn_x_init'] = np.zeros((1, 1, par['n_hidden'], 1), dtype=par['c_dtype'])
+        par['syn_u_init'] = np.zeros((1, 1, par['n_hidden'], 1), dtype=par['c_dtype'])
 
         for i in range(0,par['n_hidden'],2):
-            par['alpha_stf'][0,0,i] = par['dt']/par['tau_slow']
-            par['alpha_std'][0,0,i] = par['dt']/par['tau_fast']
+            par['alpha_stf'][0,0,i,0] = par['dt']/par['tau_slow']
+            par['alpha_std'][0,0,i,0] = par['dt']/par['tau_fast']
             par['U'][0,0,i] = 0.15
-            par['syn_x_init'][0,0,i] = 1
-            par['syn_u_init'][0,0,i] = par['U'][0,0,i+1]
+            par['syn_x_init'][0,0,i,0] = 1
+            par['syn_u_init'][0,0,i,0] = par['U'][0,0,i+1]
 
-            par['alpha_stf'][0,0,i+1] = par['dt']/par['tau_fast']
-            par['alpha_std'][0,0,i+1] = par['dt']/par['tau_slow']
+            par['alpha_stf'][0,0,i+1,0] = par['dt']/par['tau_fast']
+            par['alpha_std'][0,0,i+1,0] = par['dt']/par['tau_slow']
             par['U'][0,0,i+1] = 0.45
-            par['syn_x_init'][0,0,i+1] = 1
-            par['syn_u_init'][0,0,i+1] = par['U'][0,0,i+1]
+            par['syn_x_init'][0,0,i+1,0] = 1
+            par['syn_u_init'][0,0,i+1,0] = par['U'][0,0,i+1]
 
         par['stp_mod'] = par['dt_sec'] if par['cell_type'] == 'rate' else 1.
 

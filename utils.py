@@ -38,14 +38,25 @@ def matmul(a, b, l=False):
     """ Does matrix multiplication as a @ b, accounting for
         whether either is of dtype=int8.  'l' indicates whether
         this matrix operation is being used for a latency weight matrix """
-    if cp.int8 in [a.dtype, b.dtype]:
-        # Set up for a=state, b=weights
-        if not l:
-            return cp.sum(a[...,cp.newaxis]*b[:,cp.newaxis,...], axis=-2, dtype=cp.float16)
-        else:
-            return cp.sum(a[...,cp.newaxis]*b[:,:,cp.newaxis,...], axis=-2, dtype=cp.float16)
-    else:
-        return cp.matmul(a, b)
+    a = a[...,0]
+    b = b[:,0,:,:]
+    return cp.matmul(a, b)
+
+# TODO:  fix matmuls in following function
+# def matmul(a, b, l=False):
+#     """ Does matrix multiplication as a @ b, accounting for
+#         whether either is of dtype=int8.  'l' indicates whether
+#         this matrix operation is being used for a latency weight matrix """
+#     if cp.int8 in [a.dtype, b.dtype]:
+#         # Set up for a=state, b=weights
+#         if not l:
+#             return cp.sum(a[...,cp.newaxis]*b[:,cp.newaxis,...], axis=-2, dtype=cp.float16)
+#         else:
+#             return cp.sum(a[...,cp.newaxis]*b[:,:,cp.newaxis,...], axis=-2, dtype=cp.float16)
+#     else:
+#         a = a[...,0]
+#         b = b[:,0,:,:]
+#         return cp.matmul(a, b)
 
 
 def relu(x):
