@@ -8,6 +8,7 @@ par = {
     'save_dir'              : './savedir/',
     'save_fn'               : 'rate_dms_t02_a0999',
     'iters_per_output'      : 1,
+    'datatype'              : 'int8',    # 'float32', 'float16', 'int8'
 
     'batch_size'            : 256,
     'iterations'            : 100001,
@@ -107,6 +108,20 @@ def update_parameters(updates):
 
 def update_dependencies():
 
+    if par['datatype'] == 'float32':
+        par['w_dtype'] = np.float32
+        par['c_dtype'] = np.float32
+    elif par['datatype'] == 'float16':
+        par['w_dtype'] = np.float16
+        par['c_dtype'] = np.float16
+    elif par['datatype'] == 'int8':
+        par['w_dtype'] = np.int8
+        par['c_dtype'] = np.float16
+
+        par['input_gamma']  = 100*par['input_gamma']
+        par['rnn_gamma']    = 100*par['rnn_gamma']
+        par['output_gamma'] = 100*par['output_gamma']
+
     par['n_networks'] += 1 if par['learning_method'] == 'ES' \
         and par['n_networks']%2 == 0 else 0
 
@@ -118,43 +133,43 @@ def update_dependencies():
     par['n_input'] = par['num_motion_tuned']*par['num_receptive_fields'] + par['num_fix_tuned'] + par['num_rule_tuned']
     par['n_EI'] = int(par['n_hidden']*par['EI_prop'])
 
-    par['h_init_init']  = 0.1*np.ones([par['n_networks'],1,par['n_hidden']], dtype=np.float32)
-    par['W_in_init']    = np.random.gamma(par['input_gamma'], size=[par['n_networks'], par['n_input'], par['n_hidden']]).astype(np.float32)
-    par['W_rnn_init']   = np.random.gamma(par['rnn_gamma'], size=[par['n_networks'], par['n_hidden'], par['n_hidden']]).astype(np.float32)
-    par['W_out_init']   = np.random.gamma(par['output_gamma'], size=[par['n_networks'], par['n_hidden'], par['n_output']]).astype(np.float32)
+    par['h_init_init']  = 0.1*np.ones([par['n_networks'],1,par['n_hidden']], dtype=par['c_dtype'])
+    par['W_in_init']    = np.random.gamma(par['input_gamma'], size=[par['n_networks'], par['n_input'], par['n_hidden']]).astype(par['w_dtype'])
+    par['W_rnn_init']   = np.random.gamma(par['rnn_gamma'], size=[par['n_networks'], par['n_hidden'], par['n_hidden']]).astype(par['w_dtype'])
+    par['W_out_init']   = np.random.gamma(par['output_gamma'], size=[par['n_networks'], par['n_hidden'], par['n_output']]).astype(par['w_dtype'])
 
     if par['balance_EI']:
-        par['W_rnn_init'][:,par['n_EI']:,:par['n_EI']] = np.random.gamma(2*par['rnn_gamma'], size=par['W_rnn_init'][:,par['n_EI']:,:par['n_EI']].shape).astype(np.float32)
-        par['W_rnn_init'][:,:par['n_EI'],par['n_EI']:] = np.random.gamma(2*par['rnn_gamma'], size=par['W_rnn_init'][:,:par['n_EI'],par['n_EI']:].shape).astype(np.float32)
+        par['W_rnn_init'][:,par['n_EI']:,:par['n_EI']] = np.random.gamma(2*par['rnn_gamma'], size=par['W_rnn_init'][:,par['n_EI']:,:par['n_EI']].shape).astype(par['w_dtype'])
+        par['W_rnn_init'][:,:par['n_EI'],par['n_EI']:] = np.random.gamma(2*par['rnn_gamma'], size=par['W_rnn_init'][:,:par['n_EI'],par['n_EI']:].shape).astype(par['w_dtype'])
 
-    par['b_rnn_init']   = np.zeros([par['n_networks'], 1, par['n_hidden']], dtype=np.float32)
-    par['b_out_init']   = np.zeros([par['n_networks'], 1, par['n_output']], dtype=np.float32)
+    par['b_rnn_init']   = np.zeros([par['n_networks'], 1, par['n_hidden']], dtype=par['w_dtype'])
+    par['b_out_init']   = np.zeros([par['n_networks'], 1, par['n_output']], dtype=par['w_dtype'])
 
-    par['W_rnn_mask']   = 1 - np.eye(par['n_hidden'])[np.newaxis,:,:]
+    par['W_rnn_mask']   = 1 - np.eye(par['n_hidden'])[np.newaxis,:,:].astype(par['w_dtype'])
     par['W_rnn_init']  *= par['W_rnn_mask']
 
-    par['EI_vector']    = np.ones(par['n_hidden'], dtype=np.float32)
+    par['EI_vector']    = np.ones(par['n_hidden'])
     par['EI_vector'][par['n_EI']:] *= -1
-    par['EI_mask']      = np.diag(par['EI_vector'])[np.newaxis,:,:]
+    par['EI_mask']      = np.diag(par['EI_vector'])[np.newaxis,:,:].astype(par['w_dtype'])
 
     par['y_init_shape'] = [par['num_time_steps'], par['n_networks'], par['batch_size'], par['n_output']]
 
     par['dt_sec']       = par['dt']/1000
-    par['alpha_neuron'] = np.float32(par['dt']/par['membrane_constant'])
-    par['beta_neuron']  = np.float32(par['dt']/par['output_constant'])
-    par['noise_rnn']    = np.float32(np.sqrt(2*par['alpha_neuron'])*par['noise_rnn_sd'])
-    par['noise_in']     = np.float32(np.sqrt(2/par['alpha_neuron'])*par['noise_rnn_sd'])
+    par['alpha_neuron'] = par['c_dtype'](par['dt']/par['membrane_constant'])
+    par['beta_neuron']  = par['c_dtype'](par['dt']/par['output_constant'])
+    par['noise_rnn']    = par['c_dtype'](np.sqrt(2*par['alpha_neuron'])*par['noise_rnn_sd'])
+    par['noise_in']     = par['c_dtype'](np.sqrt(2/par['alpha_neuron'])*par['noise_rnn_sd'])
 
     par['num_survivors'] = int(par['n_networks'] * par['survival_rate']) if par['learning_method'] in ['GA', 'TA'] else 1
 
     ### Synaptic plasticity
     if par['use_stp']:
-        par['alpha_stf']  = np.ones((1, 1, par['n_hidden']), dtype=np.float32)
-        par['alpha_std']  = np.ones((1, 1, par['n_hidden']), dtype=np.float32)
-        par['U']          = np.ones((1, 1, par['n_hidden']), dtype=np.float32)
+        par['alpha_stf']  = np.ones((1, 1, par['n_hidden']), dtype=par['c_dtype'])
+        par['alpha_std']  = np.ones((1, 1, par['n_hidden']), dtype=par['c_dtype'])
+        par['U']          = np.ones((1, 1, par['n_hidden']), dtype=par['c_dtype'])
 
-        par['syn_x_init'] = np.zeros((1, 1, par['n_hidden']), dtype=np.float32)
-        par['syn_u_init'] = np.zeros((1, 1, par['n_hidden']), dtype=np.float32)
+        par['syn_x_init'] = np.zeros((1, 1, par['n_hidden']), dtype=par['c_dtype'])
+        par['syn_u_init'] = np.zeros((1, 1, par['n_hidden']), dtype=par['c_dtype'])
 
         for i in range(0,par['n_hidden'],2):
             par['alpha_stf'][0,0,i] = par['dt']/par['tau_slow']
