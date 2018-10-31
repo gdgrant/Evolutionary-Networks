@@ -13,8 +13,8 @@ par = {
     'batch_size'            : 256,
     'iterations'            : 100001,
 
-    'learning_method'       : 'TA',     # Evo search = 'ES', genetic = 'GA', thermal = 'TA'
-    'cell_type'             : 'rate',   # 'rate', 'adex'
+    'learning_method'       : 'ES',     # Evo search = 'ES', genetic = 'GA', thermal = 'TA'
+    'cell_type'             : 'adex',   # 'rate', 'adex'
     'use_stp'               : True,
     'use_adam'              : True,     # Only for 'ES'
 
@@ -34,9 +34,9 @@ par = {
     'inh_model'             : 'cNA',
     'current_divider'       : 3e6,
 
-    'use_latency'           : False,
+    'use_latency'           : True,
     'latency_min'           : 5,
-    'latency_max'           : 20,
+    'latency_max'           : 10,
 
     'freq_cost'             : 1e-4,
     'freq_target'           : 0.,
@@ -52,7 +52,7 @@ par = {
     'adam_beta2'            : 0.999,
     'adam_epsilon'          : 1e-8,
 
-    'n_networks'            : 5001,
+    'n_networks'            : 500,
     'n_hidden'              : 100,
     'n_output'              : 3,
 
@@ -68,9 +68,9 @@ par = {
     'noise_rnn_sd'          : 0.2,
     'noise_in_sd'           : 0.1,
 
-    'dt'                    : 20,
-    'membrane_constant'     : 100,
-    'output_constant'       : 20,
+    'dt'                    : 1,
+    'membrane_constant'     : 20,
+    'output_constant'       : 40,
 
     'tau_fast'              : 200,
     'tau_slow'              : 1500,
@@ -85,7 +85,7 @@ par = {
 
     'survival_rate'         : 0.10,
     'mutation_rate'         : 0.25,
-    'mutation_strength'     : 0.80,
+    'mutation_strength'     : 8.0,
     'cross_rate'            : 0.01,
     'use_crossing'          : False,
     'loss_baseline'         : 10.,
@@ -118,9 +118,9 @@ def update_dependencies():
         par['w_dtype'] = np.int8
         par['c_dtype'] = np.float16
 
-        par['input_gamma']  = 100*par['input_gamma']
-        par['rnn_gamma']    = 100*par['rnn_gamma']
-        par['output_gamma'] = 100*par['output_gamma']
+        par['input_gamma']  = 50*par['input_gamma']
+        par['rnn_gamma']    = 50*par['rnn_gamma']
+        par['output_gamma'] = 50*par['output_gamma']
 
     par['n_networks'] += 1 if par['learning_method'] == 'ES' \
         and par['n_networks']%2 == 0 else 0
