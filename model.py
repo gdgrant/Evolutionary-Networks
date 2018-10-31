@@ -152,12 +152,12 @@ class NetworkController:
             # Zero out the previous time step's buffer, and add to the
             # buffer for the upcoming time steps
             self.state_buffer[t-1%self.con_dict['max_latency'],...] = 0.
-            self.state_buffer += cp.matmul(h_in, W_rnn_latency)
+            self.state_buffer += matmul(h_in, W_rnn_latency, l=True)
 
             # Return the hidden state buffer for this time step
             return self.state_buffer[t%self.con_dict['max_latency'],...]
         else:
-            return cp.matmul(h_in, W_rnn)
+            return matmul(h_in, W_rnn)
 
 
     def rate_recurrent_cell(self, h, rnn_input, syn_x, syn_u, t):
@@ -322,6 +322,7 @@ class NetworkController:
         corrected_loss = self.loss[self.rank]
         corrected_loss[cp.where(cp.isnan(self.loss))] = 999.
         prob_of_return = softmax(-corrected_loss/self.con_dict['temperature'])
+        prob_of_return /= cp.sum(prob_of_return)
         # TODO: set replace=False but make sure we have par['num_survivors'] amount of samples with non-zero prob
         samples = np.random.choice(par['n_networks'], size=[par['num_survivors']], p=to_cpu(prob_of_return), replace=True)
         num_mutations = (par['n_networks']-par['num_survivors'])//par['num_survivors']
