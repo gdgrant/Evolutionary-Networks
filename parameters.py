@@ -6,14 +6,14 @@ global par
 par = {
 
     'save_dir'              : './savedir/',
-    'save_fn'               : 'rate_dms_t02_a0999',
+    'save_fn'               : 'adex_ga_large_slow_v3',
     'iters_per_output'      : 1,
 
-    'batch_size'            : 256,
+    'batch_size'            : 128,
     'iterations'            : 100001,
 
-    'learning_method'       : 'TA',     # Evo search = 'ES', genetic = 'GA', thermal = 'TA'
-    'cell_type'             : 'rate',   # 'rate', 'adex'
+    'learning_method'       : 'GA',     # Evo search = 'ES', genetic = 'GA', thermal = 'TA'
+    'cell_type'             : 'adex',   # 'rate', 'adex'
     'use_stp'               : True,
     'use_adam'              : True,     # Only for 'ES'
 
@@ -33,9 +33,9 @@ par = {
     'inh_model'             : 'cNA',
     'current_divider'       : 3e6,
 
-    'use_latency'           : False,
-    'latency_min'           : 5,
-    'latency_max'           : 20,
+    'use_latency'           : True,
+    'latency_min'           : 8,
+    'latency_max'           : 12,
 
     'freq_cost'             : 1e-4,
     'freq_target'           : 0.,
@@ -51,8 +51,8 @@ par = {
     'adam_beta2'            : 0.999,
     'adam_epsilon'          : 1e-8,
 
-    'n_networks'            : 5001,
-    'n_hidden'              : 100,
+    'n_networks'            : 500,
+    'n_hidden'              : 400,
     'n_output'              : 3,
 
     'num_motion_tuned'      : 24,
@@ -61,31 +61,31 @@ par = {
     'num_receptive_fields'  : 1,
     'num_motion_dirs'       : 8,
 
-    'input_gamma'           : 0.08,
-    'rnn_gamma'             : 0.04,
+    'input_gamma'           : 0.08*8,# *15 works for n_hidden=100
+    'rnn_gamma'             : 0.04*8,
     'output_gamma'          : 0.08,
-    'noise_rnn_sd'          : 0.2,
-    'noise_in_sd'           : 0.1,
+    'noise_rnn_sd'          : 0.05,
+    'noise_in_sd'           : 0.05,
 
-    'dt'                    : 20,
-    'membrane_constant'     : 100,
-    'output_constant'       : 20,
+    'dt'                    : 1,
+    'membrane_constant'     : 20,
+    'output_constant'       : 40,
 
-    'tau_fast'              : 200,
-    'tau_slow'              : 1500,
+    'tau_fast'              : 100,
+    'tau_slow'              : 800,
 
-    'dead_time'             : 100,
-    'fix_time'              : 200,
-    'sample_time'           : 200,
-    'delay_time'            : 300,
-    'test_time'             : 200,
-    'mask_time'             : 40,
+    'dead_time'             : 50,
+    'fix_time'              : 50,
+    'sample_time'           : 100,
+    'delay_time'            : 50,
+    'test_time'             : 150,
+    'mask_time'             : 20,
     'fixation_on'           : False,
 
-    'survival_rate'         : 0.10,
-    'mutation_rate'         : 0.25,
-    'mutation_strength'     : 0.80,
-    'cross_rate'            : 0.01,
+    'survival_rate'         : 0.1,
+    'mutation_rate'         : 0.1,
+    'mutation_strength'     : 0.20,
+    'cross_rate'            : 0.00,
     'use_crossing'          : False,
     'loss_baseline'         : 10.,
 
