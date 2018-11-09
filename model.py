@@ -96,6 +96,8 @@ class NetworkController:
         self.y = cp.zeros(par['y_init_shape'], dtype=cp.float32)
         self.spiking_means = cp.zeros([par['n_networks']])
 
+
+
         # Initialize cell states
         if par['cell_type'] == 'rate':
             spike = self.var_dict['h_init'] * self.size_ref
@@ -122,16 +124,18 @@ class NetworkController:
         # Apply the EI mask to the recurrent weights
         self.W_rnn_effective = apply_EI(self.var_dict['W_rnn'], self.con_dict['EI_mask'])
 
+
         # Loop across time and collect network output into y, using the
         # desired recurrent cell type
         for t in range(par['num_time_steps']):
             if par['cell_type'] == 'rate':
                 spike, syn_x, syn_u = self.rate_recurrent_cell(spike, self.input_data[t], syn_x, syn_u, t)
                 self.y[t,...] = cp.matmul(spike, self.var_dict['W_out']) + self.var_dict['b_out']
+
                 self.spiking_means += cp.mean(spike, axis=(1,2))/self.con_dict['num_time_steps']
 
             elif par['cell_type'] == 'adex':
-                spike, state, adapt = self.AdEx_recurrent_cell(spike, state, adapt, self.input_data[t], syn_x, syn_u, t)
+                spike, state, adapt, syn_x, syn_u = self.AdEx_recurrent_cell(spike, state, adapt, self.input_data[t], syn_x, syn_u, t)
                 self.y[t,...] = (1-self.con_dict['beta_neuron'])*self.y[t-1,...] \
                     + self.con_dict['beta_neuron']*cp.matmul(spike, self.var_dict['W_out'])
                 self.spiking_means += cp.mean(spike, axis=(1,2))*1000/self.con_dict['num_time_steps']
@@ -190,7 +194,7 @@ class NetworkController:
             self.con_dict, par['use_stp'], par['n_hidden'])
 
         # Calculate the current incident on the hidden neurons
-        I = cp.matmul(rnn_input, self.var_dict['W_in']) + self.rnn_matmul(spike_post, self.W_rnn_effective)
+        I = cp.matmul(rnn_input, self.var_dict['W_in']) + self.rnn_matmul(spike_post, self.W_rnn_effective, t)
         V, w, spike = run_adex(V, w, I, self.con_dict['adex'])
 
         return spike, V, w, syn_x, syn_u
@@ -431,12 +435,14 @@ def main():
         if par['learning_method'] in ['GA', 'TA']:
             mutation_strength = par['mutation_strength']*(np.nanmean(loss[:par['num_survivors']])/loss_baseline)
             control.update_constant('mutation_strength', mutation_strength)
+            """
             thresholds = [0.25, 0.1, 0.05, 0]
             modifiers  = [1/2, 1/4, 1/8]
             for t in range(len(thresholds))[:-1]:
                 if thresholds[t] > mutation_strength > thresholds[t+1]:
                     mutation_strength = par['mutation_strength']*np.nanmean(loss)/loss_baseline * modifiers[t]
                     break
+            """
 
             if par['learning_method'] == 'GA':
                 control.breed_models_genetic()
