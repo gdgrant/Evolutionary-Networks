@@ -34,45 +34,15 @@ def to_cpu(x):
 
 ### Network functions
 
-def matmul(a, b, l=False):
+def matmul(a, b):
     """ Does matrix multiplication as a @ b, accounting for
-        whether either is of dtype=int8.  'l' indicates whether
-        this matrix operation is being used for a latency weight matrix """
+        whether either is of dtype=int8 """
+    if cp.int8 in [a.dtype, b.dtype]:
+        # Set up for a=state, b=weights
+        return cp.sum(a[...,cp.newaxis]*b[:,cp.newaxis,...], axis=-2, dtype=cp.float16)
+    else:
+        return cp.matmul(a, b)
 
-    # print("matmul input shape a")
-    # print(a.shape)
-    # print("matmul input shape b")
-    # print(b.shape)
-    #
-    # input()
-
-    a = a[...,0]
-    b = b[:,0,:,:]
-
-    # print("matmul imput shape a trunc")
-    # print(a.shape)
-    # print("matmul input shape b trunc")
-    # print(b.shape)
-    #
-    # input()
-
-    return cp.matmul(a, b)[...,np.newaxis]
-
-# TODO:  fix matmuls in following function
-# def matmul(a, b, l=False):
-#     """ Does matrix multiplication as a @ b, accounting for
-#         whether either is of dtype=int8.  'l' indicates whether
-#         this matrix operation is being used for a latency weight matrix """
-#     if cp.int8 in [a.dtype, b.dtype]:
-#         # Set up for a=state, b=weights
-#         if not l:
-#             return cp.sum(a[...,cp.newaxis]*b[:,cp.newaxis,...], axis=-2, dtype=cp.float16)
-#         else:
-#             return cp.sum(a[...,cp.newaxis]*b[:,:,cp.newaxis,...], axis=-2, dtype=cp.float16)
-#     else:
-#         a = a[...,0]
-#         b = b[:,0,:,:]
-#         return cp.matmul(a, b)
 
 def relu(x):
     """ Performs relu on x """
@@ -88,31 +58,11 @@ def apply_EI(var, ei):
         excitatory/inhibitory mask """
     return cp.matmul(relu(var), ei)
 
-which_step = 1
-
 def synaptic_plasticity(h, syn_x, syn_u, constants, use_stp, hidden_size):
     """ If required, applies STP updates to the hidden state and STP
         variables.  If not required, just ensures correct hidden shape. """
 
-    # h = h[0,...] if h.ndim == 5 else False
-
     if use_stp:
-
-        global which_step
-        print("running step {}".format(which_step))
-        print(which_step)
-
-        which_step = which_step+1
-
-        print("syn_x.shape")
-        print(syn_x.shape)
-        print("syn_u.shape")
-        print(syn_u.shape)
-        print("h.shape")
-        print(h.shape)
-
-        # input()
-
         syn_x += constants['alpha_std']*(1-syn_x) - constants['stp_mod']*syn_u*syn_x*h
         syn_u += constants['alpha_stf']*(constants['U']-syn_u) + constants['stp_mod']*constants['U']*(1-syn_u)*h
         syn_x = cp.minimum(1., relu(syn_x))
