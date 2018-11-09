@@ -12,8 +12,7 @@ class NetworkController:
         if par['use_adam']:
             self.make_adam_variables()
 
-        self.size_ref = cp.ones([par['n_networks'],par['batch_size'],par['n_hidden']], \
-            dtype=cp.float32)
+        self.size_ref = cp.ones([par['n_networks'],par['batch_size'],par['n_hidden'],1], dtype=par['c_dtype'])
 
 
     def make_variables(self):
@@ -27,7 +26,6 @@ class NetworkController:
         self.var_dict = {}
         for v in var_names:
             self.var_dict[v] = to_gpu(par[v+'_init'])
-
 
     def make_constants(self):
         """ Pull constants for computation into GPU """
@@ -93,7 +91,7 @@ class NetworkController:
             outputs into y for later analysis and judgement """
 
         # Establish outputs and recording
-        self.y = cp.zeros(par['y_init_shape'], dtype=cp.float32)
+        self.y = cp.zeros(par['y_init_shape'], dtype=par['c_dtype'])
         self.spiking_means = cp.zeros([par['n_networks']])
 
 
@@ -115,7 +113,7 @@ class NetworkController:
 
         # Initialize latency buffer if being used
         if par['use_latency']:
-            self.state_buffer = cp.zeros(par['state_buffer_shape'], dtype=cp.float32)
+            self.state_buffer = cp.zeros(par['state_buffer_shape'], dtype=par['c_dtype'])
 
         # Set up derivative recording if using local_learning
         if par['local_learning']:
@@ -130,14 +128,18 @@ class NetworkController:
         for t in range(par['num_time_steps']):
             if par['cell_type'] == 'rate':
                 spike, syn_x, syn_u = self.rate_recurrent_cell(spike, self.input_data[t], syn_x, syn_u, t)
-                self.y[t,...] = cp.matmul(spike, self.var_dict['W_out']) + self.var_dict['b_out']
+                self.y[t,...,np.newaxis] = matmul(spike, self.var_dict['W_out']) + self.var_dict['b_out']
+
+                self.spiking_means = self.spiking_means[...,np.newaxis] if self.spiking_means.ndim == 1 else False
 
                 self.spiking_means += cp.mean(spike, axis=(1,2))/self.con_dict['num_time_steps']
+
+
 
             elif par['cell_type'] == 'adex':
                 spike, state, adapt, syn_x, syn_u = self.AdEx_recurrent_cell(spike, state, adapt, self.input_data[t], syn_x, syn_u, t)
                 self.y[t,...] = (1-self.con_dict['beta_neuron'])*self.y[t-1,...] \
-                    + self.con_dict['beta_neuron']*cp.matmul(spike, self.var_dict['W_out'])
+                    + self.con_dict['beta_neuron']*matmul(spike, self.var_dict['W_out'])
                 self.spiking_means += cp.mean(spike, axis=(1,2))*1000/self.con_dict['num_time_steps']
 
             if par['local_learning']:
@@ -158,12 +160,12 @@ class NetworkController:
             # Zero out the previous time step's buffer, and add to the
             # buffer for the upcoming time steps
             self.state_buffer[t-1%self.con_dict['max_latency'],...] = 0.
-            self.state_buffer += cp.matmul(h_in, W_rnn_latency)
+            self.state_buffer += matmul(h_in, W_rnn_latency, l=True)
 
             # Return the hidden state buffer for this time step
             return self.state_buffer[t%self.con_dict['max_latency'],...]
         else:
-            return cp.matmul(h_in, W_rnn)
+            return matmul(h_in, W_rnn)
 
 
     def rate_recurrent_cell(self, h, rnn_input, syn_x, syn_u, t):
@@ -177,9 +179,9 @@ class NetworkController:
 
         # Calculate new hidden state
         h = relu((1-self.con_dict['alpha_neuron'])*h \
-          + self.con_dict['alpha_neuron']*(cp.matmul(rnn_input, self.var_dict['W_in']) \
+          + self.con_dict['alpha_neuron']*(matmul(rnn_input, self.var_dict['W_in']) \
           + self.rnn_matmul(h_post, self.W_rnn_effective, t) + self.var_dict['b_rnn']) \
-          + cp.random.normal(scale=self.con_dict['noise_rnn'], size=h.shape).astype(cp.float32))
+          + cp.random.normal(scale=self.con_dict['noise_rnn'], size=h.shape).astype(par['c_dtype']))
 
         return h, syn_x, syn_u
 
@@ -194,7 +196,7 @@ class NetworkController:
             self.con_dict, par['use_stp'], par['n_hidden'])
 
         # Calculate the current incident on the hidden neurons
-        I = cp.matmul(rnn_input, self.var_dict['W_in']) + self.rnn_matmul(spike_post, self.W_rnn_effective, t)
+        I = matmul(rnn_input, self.var_dict['W_in']) + self.rnn_matmul(spike_post, self.W_rnn_effective, t)
         V, w, spike = run_adex(V, w, I, self.con_dict['adex'])
 
         return spike, V, w, syn_x, syn_u
@@ -211,8 +213,13 @@ class NetworkController:
 
         # Calculate the reciprocal weights loss of each network (returns an array of size [n_networks])
         weight_ref = self.var_dict['W_rnn'][:,:par['n_EI'],:par['n_EI']] > self.con_dict['reciprocal_threshold']
-        self.reci_loss = cp.mean(weight_ref * weight_ref.transpose([0,2,1]), axis=(1,2))
-        self.reci_loss = -self.con_dict['reciprocal_cost']*cp.minimum(self.con_dict['reciprocal_max'], self.reci_loss)
+
+        if par['reciprocal_cost'] != 0.:
+            raise Exception('Reciprocal loss not implemented.')
+        self.reci_loss = -self.con_dict['reciprocal_cost']*self.con_dict['reciprocal_max']
+        # This Exception and followup replace the following two lines:
+        # self.reci_loss = cp.mean(matmul(weight_ref, weight_ref.transpose([0,1,3,2])), axis=(1,2))
+        # self.reci_loss = -self.con_dict['reciprocal_cost']*cp.minimum(self.con_dict['reciprocal_max'], self.reci_loss)
 
         # Aggregate the various loss terms
         self.loss = self.task_loss + self.freq_loss + self.reci_loss
@@ -280,9 +287,9 @@ class NetworkController:
 
         if setup:
             self.local_delta = {}
-            self.local_delta['W_out'] = cp.zeros(self.var_dict['W_out'].shape, dtype=cp.float32)
+            self.local_delta['W_out'] = cp.zeros(self.var_dict['W_out'].shape, dtype=par['w_dtype'])
             if par['cell_type'] == 'rate':
-                self.local_delta['b_out'] = cp.zeros(self.var_dict['b_out'].shape, dtype=cp.float32)
+                self.local_delta['b_out'] = cp.zeros(self.var_dict['b_out'].shape, dtype=par['w_dtype'])
         else:
             if t is not None and spike is not None:
                 delta = self.output_mask[t,...,cp.newaxis] * (self.output_data[t,...] - softmax(self.y[t,...]))
@@ -328,8 +335,11 @@ class NetworkController:
         corrected_loss = self.loss[self.rank]
         corrected_loss[cp.where(cp.isnan(self.loss))] = 999.
         prob_of_return = softmax(-corrected_loss/self.con_dict['temperature'])
+        # normalizing samples so all probabilities sum to 0
+        prob_of_samples = to_cpu(prob_of_return)
+        prob_of_samples /= cp.sum(prob_of_samples)
         # TODO: set replace=False but make sure we have par['num_survivors'] amount of samples with non-zero prob
-        samples = np.random.choice(par['n_networks'], size=[par['num_survivors']], p=to_cpu(prob_of_return), replace=True)
+        samples = np.random.choice(par['n_networks'], size=[par['num_survivors']], p=prob_of_samples, replace=True)
         num_mutations = (par['n_networks']-par['num_survivors'])//par['num_survivors']
 
         #uniques = list(set(samples.tolist()))
@@ -344,6 +354,8 @@ class NetworkController:
                 self.var_dict[name][par['num_survivors']+i*num_mutations:par['num_survivors']+(i+1)*num_mutations,...] \
                     = mutate(self.var_dict[name][i,...], num_mutations, \
                     self.con_dict['mutation_rate'], self.con_dict['mutation_strength'])
+
+            self.var_dict[name] = self.var_dict[name].astype(par['w_dtype'])
 
         self.var_dict['W_rnn'] *= self.con_dict['W_rnn_mask']
 
@@ -389,6 +401,8 @@ class NetworkController:
                 else:
                     self.var_dict[name][1:,...] = self.var_dict[name][0:1,...]
 
+                self.var_dict[name] = self.var_dict[name].astype(par['w_dtype'])
+
         self.var_dict['W_rnn'] *= self.con_dict['W_rnn_mask']
 
 
@@ -411,7 +425,10 @@ def main():
     control.load_batch(stim.make_batch())
     control.run_models()
     control.judge_models()
+    # loss_baseline only runs every 50 iterations, and then throws a nan warning. Which then causes h to have another axis and throw a memory loss error.
     loss_baseline = np.nanmean(control.get_losses(is_ranked))
+    print("loss_baseline")
+    print(loss_baseline)
     control.update_constant('loss_baseline', loss_baseline)
 
     # Establish records for training loop
@@ -495,7 +512,7 @@ def main():
                 par['learning_method'], mean_loss, mutation_strength, spiking)
             status_stringC = 'S/O:  {:4} | Top Acc (Task/Full): {:5.3f} / {:5.3f}  | Mean Acc (Task/Full): {:5.3f} / {:5.3f}'.format( \
                 int(time.time()-t0), top_task_acc, top_full_acc, task_acc, full_acc)
-            print(status_stringA + '\n' + status_stringB + '\n' + status_stringC)
+            print(status_stringA + '\n' + status_stringB + '\n' + status_stringC + '\n')
             t0 = time.time()
 
 if __name__ == '__main__':

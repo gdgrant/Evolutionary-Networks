@@ -22,21 +22,61 @@ def to_cpu(x):
     """ Move cupy arrays (or dicts of arrays) to CPU """
     if len(sys.argv) > 1:
         if type(x) == dict:
-            return {k:cp.asnumpy(a.astype(cp.float32)) for (k, a) in x.items()}
+            return {k:cp.asnumpy(a) for (k, a) in x.items()}
         else:
-            return cp.asnumpy(x.astype(cp.float32))
+            return cp.asnumpy(x)
     else:
         if type(x) == dict:
-            return {k:a.astype(cp.float32) for (k, a) in x.items()}
+            return {k:a for (k, a) in x.items()}
         else:
-            return x.astype(cp.float32)
+            return x
 
 
 ### Network functions
 
+def matmul(a, b, l=False):
+    """ Does matrix multiplication as a @ b, accounting for
+        whether either is of dtype=int8.  'l' indicates whether
+        this matrix operation is being used for a latency weight matrix """
+
+    # print("matmul input shape a")
+    # print(a.shape)
+    # print("matmul input shape b")
+    # print(b.shape)
+    #
+    # input()
+
+    a = a[...,0]
+    b = b[:,0,:,:]
+
+    # print("matmul imput shape a trunc")
+    # print(a.shape)
+    # print("matmul input shape b trunc")
+    # print(b.shape)
+    #
+    # input()
+
+    return cp.matmul(a, b)[...,np.newaxis]
+
+# TODO:  fix matmuls in following function
+# def matmul(a, b, l=False):
+#     """ Does matrix multiplication as a @ b, accounting for
+#         whether either is of dtype=int8.  'l' indicates whether
+#         this matrix operation is being used for a latency weight matrix """
+#     if cp.int8 in [a.dtype, b.dtype]:
+#         # Set up for a=state, b=weights
+#         if not l:
+#             return cp.sum(a[...,cp.newaxis]*b[:,cp.newaxis,...], axis=-2, dtype=cp.float16)
+#         else:
+#             return cp.sum(a[...,cp.newaxis]*b[:,:,cp.newaxis,...], axis=-2, dtype=cp.float16)
+#     else:
+#         a = a[...,0]
+#         b = b[:,0,:,:]
+#         return cp.matmul(a, b)
+
 def relu(x):
     """ Performs relu on x """
-    return cp.maximum(0., x)
+    return cp.maximum(0., x, dtype=x.dtype)
 
 def softmax(x, a=-1):
     """ Performs stable softmax on x, across the last axis by default """
@@ -48,18 +88,38 @@ def apply_EI(var, ei):
         excitatory/inhibitory mask """
     return cp.matmul(relu(var), ei)
 
+which_step = 1
+
 def synaptic_plasticity(h, syn_x, syn_u, constants, use_stp, hidden_size):
     """ If required, applies STP updates to the hidden state and STP
         variables.  If not required, just ensures correct hidden shape. """
 
+    # h = h[0,...] if h.ndim == 5 else False
+
     if use_stp:
+
+        global which_step
+        print("running step {}".format(which_step))
+        print(which_step)
+
+        which_step = which_step+1
+
+        print("syn_x.shape")
+        print(syn_x.shape)
+        print("syn_u.shape")
+        print(syn_u.shape)
+        print("h.shape")
+        print(h.shape)
+
+        # input()
+
         syn_x += constants['alpha_std']*(1-syn_x) - constants['stp_mod']*syn_u*syn_x*h
         syn_u += constants['alpha_stf']*(constants['U']-syn_u) + constants['stp_mod']*constants['U']*(1-syn_u)*h
         syn_x = cp.minimum(1., relu(syn_x))
         syn_u = cp.minimum(1., relu(syn_u))
         h_post = syn_u*syn_x*h
     else:
-        h_post = h*cp.ones([1,1,hidden_size], dtype=cp.float32)
+        h_post = h*cp.ones([1,1,hidden_size], dtype=h.dtype)
 
     return h_post, syn_x, syn_u
 
@@ -77,7 +137,7 @@ def run_adex(V, w, I, constants):
     w_next      = adex_adaptation(V, w, constants)
     V, w, spike = adex_spike(V_next, w_next, constants)
 
-    return V.astype(cp.float32), w.astype(cp.float32), spike.astype(cp.float32)
+    return V.astype(cp.float32), w.astype(cp.float32), spike.astype(cp.int8)
 
 def adex_membrane(V, w, I, c):
     """ Calculate the new membrane potential """
