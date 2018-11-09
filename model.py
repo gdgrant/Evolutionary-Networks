@@ -325,6 +325,7 @@ class NetworkController:
         corrected_loss = self.loss[self.rank]
         corrected_loss[cp.where(cp.isnan(self.loss))] = 999.
         prob_of_return = softmax(-corrected_loss/self.con_dict['temperature'])
+        prob_of_return /= np.sum(prob_of_return)
         # TODO: set replace=False but make sure we have par['num_survivors'] amount of samples with non-zero prob
         samples = np.random.choice(par['n_networks'], size=[par['num_survivors']], p=to_cpu(prob_of_return), replace=True)
         num_mutations = (par['n_networks']-par['num_survivors'])//par['num_survivors']
