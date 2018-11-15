@@ -34,29 +34,58 @@ def to_cpu(x):
 
 ### Network functions
 
-def matmul(a, b, l=False):
+def matmul(a, b, l=False, exception=False):
     """ Does matrix multiplication as a @ b, accounting for
         whether either is of dtype=int8.  'l' indicates whether
         this matrix operation is being used for a latency weight matrix """
 
-    # print("matmul input shape a")
-    # print(a.shape)
-    # print("matmul input shape b")
-    # print(b.shape)
-    #
-    # input()
+    # Exception hardcoded for W_rnn_latency because it has more dims than usual
+    if exception == "h_in * W_rnn_latency":
 
-    a = a[...,0]
-    b = b[:,0,:,:]
+        print("STARTING MATMUL()")
+        print("a.shape")
+        print(a.shape)
 
-    # print("matmul imput shape a trunc")
-    # print(a.shape)
-    # print("matmul input shape b trunc")
-    # print(b.shape)
-    #
-    # input()
+        a = a[cp.newaxis,...]
 
-    return cp.matmul(a, b)[...,np.newaxis]
+        print("new a.shape")
+        print(a.shape)
+
+        print("b.shape")
+        print(b.shape)
+
+        input()
+
+        print("a.nbytes")
+        print(a.nbytes)
+
+        print("b.nbytes")
+        print(b.nbytes)
+
+        input()
+
+        print("cp.sum(a[...,cp.newaxis]*b[:,cp.newaxis,...], axis=-2, dtype=cp.float16)")
+        print(cp.sum(a*b, axis=-2, dtype=cp.float16))
+
+        print("a*b.nbytes")
+        print((a*b).nbytes)
+
+        input()
+
+        print("a*b.shape")
+        print((a*b).shape)
+
+        input()
+
+        print("cp.matmul(a, b).shape")
+        print(cp.matmul(a, b).shape)
+
+        input()
+        return cp.matmul(a, b)
+    else:
+        a = a[...,0]
+        b = b[:,0,:,:]
+        return cp.matmul(a, b)[...,np.newaxis]
 
 # TODO:  fix matmuls in following function
 # def matmul(a, b, l=False):

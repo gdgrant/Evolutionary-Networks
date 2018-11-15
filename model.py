@@ -154,13 +154,22 @@ class NetworkController:
         if par['use_latency']:
             # Calculate this time step's latency-affected W_rnn and switch
             # to next time step
-            W_rnn_latency = W_rnn[cp.newaxis,:,...] * self.con_dict['latency_mask'][:,cp.newaxis,...]
+            W_rnn_latency = W_rnn[cp.newaxis,...] * self.con_dict['latency_mask'][:,cp.newaxis,cp.newaxis,...]
             self.con_dict['latency_mask'] = cp.roll(self.con_dict['latency_mask'], shift=1, axis=0)
 
             # Zero out the previous time step's buffer, and add to the
             # buffer for the upcoming time steps
             self.state_buffer[t-1%self.con_dict['max_latency'],...] = 0.
-            self.state_buffer += matmul(h_in, W_rnn_latency, l=True)
+
+            print("h_in.shape")
+            print(h_in.shape)
+
+            print("W_rnn_latency.shape")
+            print(W_rnn_latency.shape)
+
+            input()
+
+            self.state_buffer += matmul(h_in, W_rnn_latency, l=True, exception="h_in * W_rnn_latency")
 
             # Return the hidden state buffer for this time step
             return self.state_buffer[t%self.con_dict['max_latency'],...]

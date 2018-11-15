@@ -52,7 +52,7 @@ par = {
     'adam_beta2'            : 0.999,
     'adam_epsilon'          : 1e-8,
 
-    'n_networks'            : 200,
+    'n_networks'            : 100,
     'n_hidden'              : 100,
     'n_output'              : 3,
 
@@ -187,7 +187,7 @@ def update_dependencies():
         par['stp_mod'] = par['dt_sec'] if par['cell_type'] == 'rate' else 1.
 
 
-    ### Adaptive-Expoential spiking
+    ### Adaptive-Exponential spiking
     if par['cell_type'] == 'adex':
 
         # Note that voltages are in units of mV and currents
