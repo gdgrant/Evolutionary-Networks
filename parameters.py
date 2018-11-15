@@ -6,9 +6,10 @@ global par
 par = {
 
     'save_dir'              : './savedir/',
-    'save_fn'               : 'adex_ga_large_slow_v3',
+    'save_fn'               : 'adex_ga_slow.pkl',
     'iters_per_output'      : 1,
     'datatype'              : 'float32',    # 'float32', 'float16', 'int8'
+    'load_previous_fn'      : 'adex_ga_large_slow_v2.pkl', # set this to None if you wish to start from scratch
 
     'batch_size'            : 256,
     'iterations'            : 100001,

@@ -24,8 +24,18 @@ class NetworkController:
             var_names = ['W_in', 'W_out', 'W_rnn']
 
         self.var_dict = {}
-        for v in var_names:
-            self.var_dict[v] = to_gpu(par[v+'_init'])
+        if par['load_previous_fn'] is None:
+            for v in var_names:
+                self.var_dict[v] = to_gpu(par[v+'_init'])
+        else:
+            results = pickle.load(open(par['save_dir'] + par['load_previous_fn'],'rb'))
+            if par['learning_method'] == 'ES':
+                for v in var_names:
+                    results['weights'][v] = np.repeat(results['weights'][v][0:1,...], par['n_networks'], axis = 0)
+
+            for v in var_names:
+                self.var_dict[v] = to_gpu(results['weights'][v])
+
 
     def make_constants(self):
         """ Pull constants for computation into GPU """
@@ -369,7 +379,7 @@ class NetworkController:
                     delta_var = self.local_delta[name][0]/self.con_dict['num_time_steps']
                 else:
                     grad_epsilon = self.var_dict[name][1:,...] - self.var_dict[name][0:1,...]
-                    delta_var = -cp.mean(grad_epsilon * self.loss[1:,cp.newaxis,cp.newaxis], axis=0)/cp.std(self.loss[1:])
+                    delta_var = -cp.mean(grad_epsilon * self.loss[1:,cp.newaxis,cp.newaxis], axis=0)/(1e-3 + cp.std(self.loss[1:]))
 
                 if par['use_adam']:
                     self.adam_par['m_' + name] = self.adam_par['beta1']*self.adam_par['m_' + name] + \
@@ -486,10 +496,13 @@ def main():
             save_record['loss_factors'].append(loss_dict)
             save_record['mut_str'].append(mutation_strength)
             save_record['spiking'].append(spiking)
-            pickle.dump(save_record, open(par['save_dir']+par['save_fn']+'.pkl', 'wb'))
-            if i%(10*par['iters_per_output']) == 0:
-                print('Saving weights for iteration {}... ({})\n'.format(i, par['save_fn']))
-                pickle.dump(to_cpu(control.var_dict), open(par['save_dir']+par['save_fn']+'_weights.pkl', 'wb'))
+
+
+            if i%(50*par['iters_per_output']) == 0:
+                print('Saving information for iteration {}... ({})\n'.format(i, par['save_fn']))
+                save_record['weights'] = to_cpu(control.var_dict)
+                save_record['par'] = par
+                pickle.dump(save_record, open(par['save_dir'] + par['save_fn'], 'wb'))
 
             status_stringA = 'Iter: {:4} | Task Loss: {:5.3f} | Freq Loss: {:5.3f} | Reci Loss: {:5.3f}'.format( \
                 i, task_loss, freq_loss, reci_loss)
