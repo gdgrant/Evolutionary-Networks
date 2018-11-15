@@ -128,6 +128,8 @@ def synaptic_plasticity(h, syn_x, syn_u, constants, use_stp, hidden_size):
     if use_stp:
 
         global which_step
+
+        print("STARTING SYNAPTIC_PLASTICITY")
         print("running step {}".format(which_step))
         print(which_step)
 

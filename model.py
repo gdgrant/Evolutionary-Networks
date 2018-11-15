@@ -161,6 +161,8 @@ class NetworkController:
             # buffer for the upcoming time steps
             self.state_buffer[t-1%self.con_dict['max_latency'],...] = 0.
 
+            print("STARTING RNN_MATMUL")
+
             print("h_in.shape")
             print(h_in.shape)
 
