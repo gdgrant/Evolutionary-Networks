@@ -235,8 +235,8 @@ class NetworkController:
 
         for n in range(par['n_networks']):
             h_aug = cp.concatenate((self.h_hist[n], cp.ones((par['batch_size']*len(self.con_dict['h_time']),1))),axis=1)
-            #W_aug = cp.linalg.lstsq(h_aug, output)[0]
-            W_aug = cp.matmul(cp.matmul(cp.linalg.inv(cp.matmul(h_aug.T, h_aug)+0.00001*cp.identity(h_aug.shape[1])), h_aug.T), output)
+            W_aug = to_gpu(np.linalg.lstsq(to_cpu(h_aug), to_cpu(output))[0])
+            #W_aug = cp.matmul(cp.matmul(cp.linalg.inv(cp.matmul(h_aug.T, h_aug)+0.00001*cp.identity(h_aug.shape[1])), h_aug.T), output)
 
             self.W_out_calc[n] = W_aug[:par['n_hidden']]
             self.b_out_calc[n] = W_aug[par['n_hidden']:]
@@ -247,12 +247,15 @@ class NetworkController:
 
         # Calculate the task loss of each network (returns an array of size [n_networks])
         if par['use_w_hack']:
+            print("Initial task loss:",\
+                  cross_entropy(self.output_mask, self.output_data, self.y).mean())
             self.calculate_weight()
             self.var_dict['W_out'] = self.W_out_calc
             self.var_dict['b_out'] = self.b_out_calc
             self.run_models()
             
         self.task_loss = cross_entropy(self.output_mask, self.output_data, self.y)
+        print("Adjusted task loss:",self.task_loss.mean())
 
         # Calculate the frequency loss of each network (returns an array of size [n_networks])
         self.freq_loss = self.con_dict['freq_cost']*cp.abs(self.spiking_means-self.con_dict['freq_target'])

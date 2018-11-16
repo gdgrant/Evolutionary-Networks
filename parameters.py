@@ -53,7 +53,7 @@ par = {
     'adam_beta2'            : 0.999,
     'adam_epsilon'          : 1e-8,
 
-    'n_networks'            : 501,
+    'n_networks'            : 1001,
     'n_hidden'              : 100,
     'n_output'              : 3,
 
