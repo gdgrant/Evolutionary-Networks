@@ -235,7 +235,8 @@ class NetworkController:
 
         for n in range(par['n_networks']):
             h_aug = cp.concatenate((self.h_hist[n], cp.ones((par['batch_size']*len(self.con_dict['h_time']),1))),axis=1)
-            W_aug = cp.linalg.lstsq(h_aug, output)[0]
+            #W_aug = cp.linalg.lstsq(h_aug, output)[0]
+            W_aug = cp.matmul(cp.matmul(cp.linalg.inv(cp.matmul(h_aug.T, h_aug)+0.00001*cp.identity(h_aug.shape[1])), h_aug.T), output)
 
             self.W_out_calc[n] = W_aug[:par['n_hidden']]
             self.b_out_calc[n] = W_aug[par['n_hidden']:]
