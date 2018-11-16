@@ -137,9 +137,9 @@ def update_dependencies():
     
     par['h_time'] = np.array(par['h_time']) // par['dt']
     par['h_window'] = np.array(par['h_window']) // par['dt']
-    par['h_time_long'] = np.zeros((len(par['h_time']),par['h_window']))
-    for i in range(len(par['h_time'])):
-        par['h_time_long'][i] = np.arange(par['h_time'][i], par['h_time'][i]+par['h_window'])
+    par['h_time_long'] = np.zeros(len(par['h_time'])*par['h_window'])
+    for i in range(0,len(par['h_time']),par['h_window']):
+        par['h_time_long'][i:i+par['h_window']] = np.arange(par['h_time'][i], par['h_time'][i]+par['h_window'])
 
     par['n_input'] = par['num_motion_tuned']*par['num_receptive_fields'] + par['num_fix_tuned'] + par['num_rule_tuned']
     par['n_EI'] = int(par['n_hidden']*par['EI_prop'])
