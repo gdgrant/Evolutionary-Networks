@@ -53,7 +53,7 @@ class NetworkController:
         GA_constants    = ['mutation_rate', 'mutation_strength', 'cross_rate', 'loss_baseline', 'temperature']
         ES_constants    = ['ES_learning_rate', 'ES_sigma']
 
-        w_hack_constants  = ['h_time']
+        w_hack_constants  = ['h_time','h_time_long']
 
         local_learning_constants = ['local_learning_rate']
 
@@ -108,8 +108,6 @@ class NetworkController:
         self.y = cp.zeros(par['y_init_shape'], dtype=par['c_dtype'])
         self.spiking_means = cp.zeros([par['n_networks']])
 
-
-
         # Initialize cell states
         if par['cell_type'] == 'rate':
             spike = self.var_dict['h_init'] * self.size_ref
@@ -139,12 +137,19 @@ class NetworkController:
 
         # Loop across time and collect network output into y, using the
         # desired recurrent cell type
-        self.h_hist = []
+        bin = 0
+        count = 0
+        self.h_hist = np.zeros((len(par['h_time']),par['n_networks'],par['batch_size'],par['n_hidden']))
         for t in range(par['num_time_steps']):
             if par['cell_type'] == 'rate':
                 spike, syn_x, syn_u = self.rate_recurrent_cell(spike, self.input_data[t], syn_x, syn_u, t)
-                if par['use_w_hack'] and t in self.con_dict['h_time']:
-                    self.h_hist.append(spike)
+                if par['use_w_hack'] and t in self.con_dict['h_time_long']:
+                    if count < par['h_window']:
+                        count += 1
+                    else:
+                        count = 0
+                        bin += 1
+                    self.h_hist[bin] += spike
                 self.y[t,...] = matmul(spike, self.var_dict['W_out']) + self.var_dict['b_out']
                 self.spiking_means += cp.mean(spike, axis=(1,2))/self.con_dict['num_time_steps']
 
@@ -156,6 +161,8 @@ class NetworkController:
 
             if par['local_learning']:
                 self.local_learning(t=t, spike=spike)
+
+        self.h_hist /= par['h_window']
 
 
     def rnn_matmul(self, h_in, W_rnn, t):
@@ -215,7 +222,6 @@ class NetworkController:
 
     def calculate_weight(self):
 
-        # TODO: NEED TO AVERAGE OVER 20ms WINDOW
         # TODO: initialize self.h_hist as numpy array
         # TODO: fix reshape dimension to be flexible
         self.W_out_calc = np.zeros(self.var_dict['W_out'].shape)
@@ -231,14 +237,10 @@ class NetworkController:
 
         for n in range(par['n_networks']):
             h_aug = cp.concatenate((h_hist[n], np.ones((par['batch_size']*len(self.con_dict['h_time']),1))),axis=1)
-            W_aug = cp.matmul(cp.matmul(cp.linalg.inv(cp.matmul(h_aug.T, h_aug)+0.00001*cp.identity(h_aug.shape[1])), h_aug.T), output)
-            
+            W_aug = cp.linalg.lstsq(h_aug, output)[0]
+
             self.W_out_calc[n] = W_aug[:par['n_hidden']]
             self.b_out_calc[n] = W_aug[par['n_hidden']:]
-
-        print(self.W_out_calc.mean())
-        print(self.b_out_calc.mean())
-
 
 
     def judge_models(self):
@@ -247,7 +249,9 @@ class NetworkController:
         # Calculate the task loss of each network (returns an array of size [n_networks])
         if par['use_w_hack']:
             self.calculate_weight()
-            # TODO: Recalculate output_data using calculated W_out and b_out
+            self.var_dict['W_out'] = self.W_out_calc
+            self.var_dict['b_out'] = self.b_out_calc
+            self.run_models()
             
         self.task_loss = cross_entropy(self.output_mask, self.output_data, self.y)
 
