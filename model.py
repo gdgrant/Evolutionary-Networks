@@ -139,7 +139,7 @@ class NetworkController:
         # desired recurrent cell type
         bin = 0
         count = 0
-        self.h_hist = np.zeros((len(par['h_time']),par['n_networks'],par['batch_size'],par['n_hidden']))
+        self.h_hist = cp.zeros((len(par['h_time']),par['n_networks'],par['batch_size'],par['n_hidden']))
         for t in range(par['num_time_steps']):
             if par['cell_type'] == 'rate':
                 spike, syn_x, syn_u = self.rate_recurrent_cell(spike, self.input_data[t], syn_x, syn_u, t)
@@ -222,21 +222,19 @@ class NetworkController:
 
     def calculate_weight(self):
 
-        # TODO: initialize self.h_hist as numpy array
         # TODO: fix reshape dimension to be flexible
-        self.W_out_calc = np.zeros(self.var_dict['W_out'].shape)
-        self.b_out_calc = np.zeros(self.var_dict['b_out'].shape)
+        self.W_out_calc = cp.zeros(self.var_dict['W_out'].shape)
+        self.b_out_calc = cp.zeros(self.var_dict['b_out'].shape)
 
         # hW + b = y
-        h_hist = cp.array(self.h_hist)
-        h_hist = cp.reshape(h_hist, (par['n_networks'], par['batch_size']*len(self.con_dict['h_time']), par['n_hidden']))
+        self.h_hist = cp.reshape(self.h_hist, (par['n_networks'], par['batch_size']*len(self.con_dict['h_time']), par['n_hidden']))
 
         # h_hist: network x (5xbatch) x neuron
         output = np.reshape(self.output_data[self.con_dict['h_time']][:,0,:,:], \
                             (par['batch_size']*len(self.con_dict['h_time']), par['n_output']))
 
         for n in range(par['n_networks']):
-            h_aug = cp.concatenate((h_hist[n], np.ones((par['batch_size']*len(self.con_dict['h_time']),1))),axis=1)
+            h_aug = cp.concatenate((self.h_hist[n], np.ones((par['batch_size']*len(self.con_dict['h_time']),1))),axis=1)
             W_aug = cp.linalg.lstsq(h_aug, output)[0]
 
             self.W_out_calc[n] = W_aug[:par['n_hidden']]
