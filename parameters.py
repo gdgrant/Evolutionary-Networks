@@ -9,7 +9,7 @@ par = {
     'save_fn'               : 'adex_ga_slow.pkl',
     'iters_per_output'      : 1,
     'datatype'              : 'float32',    # 'float32', 'float16', 'int8'
-    'load_previous_fn'      : 'adex_ga_large_slow_v2.pkl', # set this to None if you wish to start from scratch
+    'load_previous_fn'      : None, #'adex_ga_large_slow_v2.pkl', # set this to None if you wish to start from scratch
 
     'batch_size'            : 256,
     'iterations'            : 100001,
@@ -35,7 +35,7 @@ par = {
     'inh_model'             : 'cNA',
     'current_divider'       : 3e6,
 
-    'use_latency'           : True,
+    'use_latency'           : False,
     'latency_min'           : 8,
     'latency_max'           : 12,
 
@@ -53,7 +53,7 @@ par = {
     'adam_beta2'            : 0.999,
     'adam_epsilon'          : 1e-8,
 
-    'n_networks'            : 1001,
+    'n_networks'            : 31,
     'n_hidden'              : 100,
     'n_output'              : 3,
 
@@ -83,6 +83,10 @@ par = {
     'test_time'             : 150,
     'mask_time'             : 20,
     'fixation_on'           : False,
+
+    'use_w_hack'            : True,
+    'h_time'                : [240,270,300,350,380],
+    'h_window'              : 20,
 
     'survival_rate'         : 0.1,
     'mutation_rate'         : 0.1,
@@ -130,6 +134,9 @@ def update_dependencies():
 
     par['trial_length'] = par['dead_time'] + par['fix_time'] + +par['sample_time'] + par['delay_time'] + par['test_time']
     par['num_time_steps'] = par['trial_length'] // par['dt']
+    
+    par['h_time'] = np.array(par['h_time']) // par['dt']
+    par['h_window'] = np.array(par['h_window']) // par['dt']
 
     par['n_input'] = par['num_motion_tuned']*par['num_receptive_fields'] + par['num_fix_tuned'] + par['num_rule_tuned']
     par['n_EI'] = int(par['n_hidden']*par['EI_prop'])

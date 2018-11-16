@@ -13,6 +13,7 @@ class NetworkController:
             self.make_adam_variables()
 
         self.size_ref = cp.ones([par['n_networks'],par['batch_size'],par['n_hidden']], dtype=par['c_dtype'])
+        self.h_hist = []
 
 
     def make_variables(self):
@@ -52,6 +53,8 @@ class NetworkController:
         GA_constants    = ['mutation_rate', 'mutation_strength', 'cross_rate', 'loss_baseline', 'temperature']
         ES_constants    = ['ES_learning_rate', 'ES_sigma']
 
+        w_hack_constants  = ['h_time']
+
         local_learning_constants = ['local_learning_rate']
 
         constant_names  = gen_constants + time_constants + loss_constants
@@ -61,6 +64,7 @@ class NetworkController:
         constant_names += GA_constants if par['learning_method'] in ['GA', 'TA'] else []
         constant_names += ES_constants if par['learning_method'] == 'ES' else []
         constant_names += local_learning_constants if par['local_learning'] else []
+        constant_names += w_hack_constants if par['use_w_hack'] else []
 
         self.con_dict = {}
         for c in constant_names:
@@ -135,9 +139,12 @@ class NetworkController:
 
         # Loop across time and collect network output into y, using the
         # desired recurrent cell type
+        self.h_hist = []
         for t in range(par['num_time_steps']):
             if par['cell_type'] == 'rate':
                 spike, syn_x, syn_u = self.rate_recurrent_cell(spike, self.input_data[t], syn_x, syn_u, t)
+                if par['use_w_hack'] and t in self.con_dict['h_time']:
+                    self.h_hist.append(spike)
                 self.y[t,...] = matmul(spike, self.var_dict['W_out']) + self.var_dict['b_out']
                 self.spiking_means += cp.mean(spike, axis=(1,2))/self.con_dict['num_time_steps']
 
@@ -206,11 +213,42 @@ class NetworkController:
 
         return spike, V, w, syn_x, syn_u
 
+    def calculate_weight(self):
+
+        # TODO: NEED TO AVERAGE OVER 20ms WINDOW
+        # TODO: initialize self.h_hist as numpy array
+        # TODO: fix reshape dimension to be flexible
+        self.W_out_calc = np.zeros(self.var_dict['W_out'].shape)
+        self.b_out_calc = np.zeros(self.var_dict['b_out'].shape)
+
+        # hW + b = y
+        h_hist = cp.array(self.h_hist)
+        h_hist = cp.reshape(h_hist, (par['n_networks'], par['batch_size']*len(self.con_dict['h_time']), par['n_hidden']))
+
+        # h_hist: network x (5xbatch) x neuron
+        output = np.reshape(self.output_data[self.con_dict['h_time']][:,0,:,:], \
+                            (par['batch_size']*len(self.con_dict['h_time']), par['n_output']))
+
+        for n in range(par['n_networks']):
+            h_aug = cp.concatenate((h_hist[n], np.ones((par['batch_size']*len(self.con_dict['h_time']),1))),axis=1)
+            W_aug = cp.matmul(cp.matmul(cp.linalg.inv(cp.matmul(h_aug.T, h_aug)+0.00001*cp.identity(h_aug.shape[1])), h_aug.T), output)
+            
+            self.W_out_calc[n] = W_aug[:par['n_hidden']]
+            self.b_out_calc[n] = W_aug[par['n_hidden']:]
+
+        print(self.W_out_calc.mean())
+        print(self.b_out_calc.mean())
+
+
 
     def judge_models(self):
         """ Determine the loss of each model, and rank them accordingly """
 
         # Calculate the task loss of each network (returns an array of size [n_networks])
+        if par['use_w_hack']:
+            self.calculate_weight()
+            # TODO: Recalculate output_data using calculated W_out and b_out
+            
         self.task_loss = cross_entropy(self.output_mask, self.output_data, self.y)
 
         # Calculate the frequency loss of each network (returns an array of size [n_networks])
@@ -238,6 +276,11 @@ class NetworkController:
                 self.var_dict[name] = self.var_dict[name][self.rank,...]
                 if par['local_learning'] and name in par['local_learning_vars']:
                     self.local_delta[name] = self.local_delta[name][self.rank,...]
+
+            if par['use_w_hack']:
+                self.var_dict['W_out'] = self.W_out_calc[self.rank]
+                self.var_dict['b_out'] = self.b_out_calc[self.rank]
+
 
 
     def get_spiking(self):
@@ -319,6 +362,11 @@ class NetworkController:
 
         self.var_dict['W_rnn'] *= self.con_dict['W_rnn_mask']
 
+        if par['use_w_hack']:
+            self.var_dict['W_out'] = self.W_out_calc[self.rank]
+            self.var_dict['b_out'] = self.b_out_calc[self.rank]
+
+
 
     def breed_models_thermal(self, iteration):
         """ Based on the top networks in the ensemble, probabilistically
@@ -356,6 +404,9 @@ class NetworkController:
             self.var_dict[name] = self.var_dict[name].astype(par['w_dtype'])
 
         self.var_dict['W_rnn'] *= self.con_dict['W_rnn_mask']
+        if par['use_w_hack']:
+            self.var_dict['W_out'] = self.W_out_calc[self.rank]
+            self.var_dict['b_out'] = self.b_out_calc[self.rank]
 
 
     def breed_models_evo_search(self, iteration):
@@ -402,6 +453,9 @@ class NetworkController:
                 self.var_dict[name] = self.var_dict[name].astype(par['w_dtype'])
 
         self.var_dict['W_rnn'] *= self.con_dict['W_rnn_mask']
+        if par['use_w_hack']:
+            self.var_dict['W_out'] = self.W_out_calc[self.rank]
+            self.var_dict['b_out'] = self.b_out_calc[self.rank]
 
 
 def main():
