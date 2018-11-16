@@ -14,7 +14,7 @@ par = {
     'batch_size'            : 256,
     'iterations'            : 100001,
 
-    'learning_method'       : 'TA',     # Evo search = 'ES', genetic = 'GA', thermal = 'TA'
+    'learning_method'       : 'GA',     # Evo search = 'ES', genetic = 'GA', thermal = 'TA'
     'cell_type'             : 'rate',   # 'rate', 'adex'
     'use_stp'               : True,
     'use_adam'              : True,     # Only for 'ES'
@@ -69,7 +69,7 @@ par = {
     'noise_rnn_sd'          : 0.05,
     'noise_in_sd'           : 0.05,
 
-    'dt'                    : 1,
+    'dt'                    : 20,
     'membrane_constant'     : 20,
     'output_constant'       : 40,
 
@@ -85,7 +85,7 @@ par = {
     'fixation_on'           : False,
 
     'use_w_hack'            : True,
-    'h_time'                : [240,270,300,350,380],
+    'h_time'                : [190,210,230,280,300,320],
     'h_window'              : 20,
 
     'survival_rate'         : 0.1,
