@@ -230,11 +230,11 @@ class NetworkController:
         self.h_hist = cp.reshape(self.h_hist, (par['n_networks'], par['batch_size']*len(self.con_dict['h_time']), par['n_hidden']))
 
         # h_hist: network x (5xbatch) x neuron
-        output = np.reshape(self.output_data[self.con_dict['h_time']][:,0,:,:], \
+        output = cp.reshape(self.output_data[self.con_dict['h_time']][:,0,:,:], \
                             (par['batch_size']*len(self.con_dict['h_time']), par['n_output']))
 
         for n in range(par['n_networks']):
-            h_aug = cp.concatenate((self.h_hist[n], np.ones((par['batch_size']*len(self.con_dict['h_time']),1))),axis=1)
+            h_aug = cp.concatenate((self.h_hist[n], cp.ones((par['batch_size']*len(self.con_dict['h_time']),1))),axis=1)
             W_aug = cp.linalg.lstsq(h_aug, output)[0]
 
             self.W_out_calc[n] = W_aug[:par['n_hidden']]
@@ -293,7 +293,7 @@ class NetworkController:
     def get_weights(self):
         """ Return the mean of the surviving networks' weights
             (post-sort, if sorted by the current learning method) """
-        return to_cpu({name:np.mean(self.var_dict[name][:par['num_survivors'],...], axis=0) \
+        return to_cpu({name:cp.mean(self.var_dict[name][:par['num_survivors'],...], axis=0) \
             for name in self.var_dict.keys()})
 
 
