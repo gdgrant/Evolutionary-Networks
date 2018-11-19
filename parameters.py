@@ -11,7 +11,7 @@ par = {
     'datatype'              : 'float32',    # 'float32', 'float16', 'int8'
     'load_previous_fn'      : None, #'adex_ga_large_slow_v2.pkl', # set this to None if you wish to start from scratch
 
-    'batch_size'            : 256,
+    'batch_size'            : 128,
     'iterations'            : 100001,
 
     'learning_method'       : 'GA',     # Evo search = 'ES', genetic = 'GA', thermal = 'TA'
@@ -53,44 +53,44 @@ par = {
     'adam_beta2'            : 0.999,
     'adam_epsilon'          : 1e-8,
 
-    'n_networks'            : 1000,
+    'n_networks'            : 2000,
     'n_hidden'              : 100,
     'n_output'              : 3,
 
     'num_motion_tuned'      : 24,
-    'num_fix_tuned'         : 0,
-    'num_rule_tuned'        : 0,
+    'num_fix_tuned'         : 2,
+    'num_rule_tuned'        : 2,
     'num_receptive_fields'  : 1,
     'num_motion_dirs'       : 8,
 
-    'input_gamma'           : 0.1*1,# *15 works for n_hidden=100
-    'rnn_gamma'             : 0.05*1,
-    'output_gamma'          : 0.08,
-    'noise_rnn_sd'          : 0.5,
-    'noise_in_sd'           : 0.1,
+    'input_gamma'           : 0.2*1,# *15 works for n_hidden=100
+    'rnn_gamma'             : 0.1*1,
+    'output_gamma'          : 0.2,
+    'noise_rnn_sd'          : 0.05,
+    'noise_in_sd'           : 0.05,
 
     'dt'                    : 20,
     'membrane_constant'     : 100,
-    'output_constant'       : 40,
+    'output_constant'       : 20,
 
     'tau_fast'              : 200,
     'tau_slow'              : 1500,
 
     'dead_time'             : 100,
-    'fix_time'              : 100,
+    'fix_time'              : 200,
     'sample_time'           : 200,
-    'delay_time'            : 500,
-    'test_time'             : 300,
-    'mask_time'             : 20,
-    'fixation_on'           : False,
+    'delay_time'            : 300,
+    'test_time'             : 200,
+    'mask_time'             : 40,
+    'fixation_on'           : True,
 
-    'use_w_hack'            : True,
+    'use_w_hack'            : False,
     'h_time'                : [200, 220, 240, 260, 800, 820, 850, 870, 950, 970, 990, 1010, 1030, 1050, 1070, 1090, 1110],
     'h_window'              : 20,
 
     'survival_rate'         : 0.1,
-    'mutation_rate'         : 1.,
-    'mutation_strength'     : 2.,
+    'mutation_rate'         : 0.25,
+    'mutation_strength'     : 0.8,
     'cross_rate'            : 0.00,
     'use_crossing'          : False,
     'loss_baseline'         : 10.,
@@ -98,7 +98,7 @@ par = {
     'task'                  : 'dms',
     'kappa'                 : 2.0,
     'tuning_height'         : 4.0,
-    'response_multiplier'   : 1.0,
+    'response_multiplier'   : 4.0,
     'num_rules'             : 1,
 
 }

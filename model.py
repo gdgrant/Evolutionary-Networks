@@ -292,12 +292,11 @@ class NetworkController:
 
         # If a network explodes due to a poorly-selected recurrent connection,
         # set that network's loss to the loss baseline (chosen prior to the 0th iteration)
-        #self.loss[cp.where(cp.isnan(self.loss))] = self.con_dict['loss_baseline']
+        self.loss[cp.where(cp.isnan(self.loss))] = self.con_dict['loss_baseline']
 
         # Rank the networks (returns [n_networks] indices)
         self.rank = cp.argsort(self.loss.astype(cp.float32)).astype(cp.int16)
-        #acc = self.get_performance(ranked = False)
-        #self.rank = cp.argsort(-acc[0].astype(cp.float32)).astype(cp.int16)
+
 
         # Sort the weights if required by the current learning method
         if par['learning_method'] in ['GA', 'TA']:
@@ -306,14 +305,6 @@ class NetworkController:
                 self.var_dict[name] = self.var_dict[name][self.rank,...]
                 if par['local_learning'] and name in par['local_learning_vars']:
                     self.local_delta[name] = self.local_delta[name][self.rank,...]
-
-            """
-            if False and par['use_w_hack']:
-                self.var_dict['W_out'] = self.W_out_calc[self.rank]
-                self.var_dict['b_out'] = self.b_out_calc[self.rank]
-            """
-
-
 
 
 
@@ -539,14 +530,15 @@ def main():
         if par['learning_method'] in ['GA', 'TA']:
             mutation_strength = par['mutation_strength']*(np.nanmean(loss[:par['num_survivors']])/loss_baseline)
             control.update_constant('mutation_strength', mutation_strength)
-            """
+
             thresholds = [0.25, 0.1, 0.05, 0]
             modifiers  = [1/2, 1/4, 1/8]
             for t in range(len(thresholds))[:-1]:
                 if thresholds[t] > mutation_strength > thresholds[t+1]:
                     mutation_strength = par['mutation_strength']*np.nanmean(loss)/loss_baseline * modifiers[t]
                     break
-            """
+
+
 
             if par['learning_method'] == 'GA':
                 control.breed_models_genetic()
