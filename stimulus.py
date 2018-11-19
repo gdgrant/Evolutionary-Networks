@@ -82,8 +82,7 @@ class Stimulus:
 
             test_direction = sample_direction[t] if match[t] else np.random.choice(np.setdiff1d(np.arange(par['num_motion_dirs']), sample_direction[t]))
 
-            if par['fixation_on']:
-                trial_info['neural_input'][end_dead_time:end_delay_time,t,par['num_motion_tuned']:par['num_motion_tuned']+par['num_fix_tuned']] += self.fix_tuning[np.newaxis,:,0]
+            trial_info['neural_input'][end_dead_time:end_delay_time,t,par['num_motion_tuned']:par['num_motion_tuned']+par['num_fix_tuned']] += self.fix_tuning[np.newaxis,:,0]
             trial_info['neural_input'][end_fix_time:end_sample_time,t,:par['num_motion_tuned']] += self.motion_tuning[np.newaxis,:,0,sample_direction[t]]
             trial_info['neural_input'][end_delay_time:end_test_time,t,:par['num_motion_tuned']] += self.motion_tuning[np.newaxis,:,0,test_direction]
 
@@ -98,8 +97,8 @@ class Stimulus:
 
         trial_info = {
             'neural_input'      : np.random.normal(0., par['noise_in'], size=[par['num_time_steps'], par['batch_size'], par['n_input']]),
-            'desired_output'    : np.zeros([par['num_time_steps'], par['batch_size'], par['n_output']], dtype=np.float32),
-            'train_mask'        : np.ones([par['num_time_steps'], par['batch_size']], dtype=np.float32)
+            'desired_output'    : np.zeros([par['num_time_steps'], par['batch_size'], par['n_output']], dtype=np.float16),
+            'train_mask'        : np.ones([par['num_time_steps'], par['batch_size']], dtype=np.float16)
         }
 
         end_dead_time       = par['dead_time']//par['dt']
@@ -117,8 +116,7 @@ class Stimulus:
 
         for t in range(par['batch_size']):
 
-            if par['fixation_on']:
-                trial_info['neural_input'][end_dead_time:end_delay_time,t,par['num_motion_tuned']:par['num_motion_tuned']+par['num_fix_tuned']] += self.fix_tuning[np.newaxis,:,0]
+            trial_info['neural_input'][end_dead_time:end_delay_time,t,par['num_motion_tuned']:par['num_motion_tuned']+par['num_fix_tuned']] += self.fix_tuning[np.newaxis,:,0]
             trial_info['neural_input'][end_fix_time:end_test_time,t,:par['num_motion_tuned']] += self.motion_tuning[np.newaxis,:,0,sample_direction[t]]
 
             output_neuron = 1 if sample_direction[t] < 4 else 2
@@ -134,16 +132,16 @@ class Stimulus:
         """
         Generate tuning functions for the Postle task
         """
-        motion_tuning = np.zeros((par['num_motion_tuned'], par['num_receptive_fields'], par['num_motion_dirs']), dtype=np.float32)
-        fix_tuning    = np.zeros((par['num_fix_tuned'], par['num_receptive_fields']), dtype=np.float32)
-        rule_tuning   = np.zeros((par['num_rule_tuned'], par['num_rules']), dtype=np.float32)
+        motion_tuning = np.zeros((par['num_motion_tuned'], par['num_receptive_fields'], par['num_motion_dirs']), dtype=np.float16)
+        fix_tuning    = np.zeros((par['num_fix_tuned'], par['num_receptive_fields']), dtype=np.float16)
+        rule_tuning   = np.zeros((par['num_rule_tuned'], par['num_rules']), dtype=np.float16)
 
         # generate list of prefered directions
         # dividing neurons by 2 since two equal groups representing two modalities
-        pref_dirs = np.float32(np.arange(0,360,360/(par['num_motion_tuned']//par['num_receptive_fields'])))
+        pref_dirs = np.float16(np.arange(0,360,360/(par['num_motion_tuned']//par['num_receptive_fields'])))
 
         # generate list of possible stimulus directions
-        stim_dirs = np.float32(np.arange(0,360,360/par['num_motion_dirs']))
+        stim_dirs = np.float16(np.arange(0,360,360/par['num_motion_dirs']))
 
         for n in range(par['num_motion_tuned']//par['num_receptive_fields']):
             for i in range(len(stim_dirs)):

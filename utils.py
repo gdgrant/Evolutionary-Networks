@@ -22,135 +22,44 @@ def to_cpu(x):
     """ Move cupy arrays (or dicts of arrays) to CPU """
     if len(sys.argv) > 1:
         if type(x) == dict:
-            return {k:cp.asnumpy(a) for (k, a) in x.items()}
+            return {k:cp.asnumpy(a.astype(cp.float32)) for (k, a) in x.items()}
         else:
-            return cp.asnumpy(x)
+            return cp.asnumpy(x.astype(cp.float32))
     else:
         if type(x) == dict:
-            return {k:a for (k, a) in x.items()}
+            return {k:x.astype(cp.float32) for (k, a) in x.items()}
         else:
-            return x
+            return x.astype(cp.float32)
 
 
 ### Network functions
 
-def matmul(a, b, l=False, exception=False):
-    """ Does matrix multiplication as a @ b, accounting for
-        whether either is of dtype=int8.  'l' indicates whether
-        this matrix operation is being used for a latency weight matrix """
-
-    # Exception hardcoded for W_rnn_latency because it has more dims than usual
-    if exception == "h_in * W_rnn_latency":
-
-        print("STARTING MATMUL()")
-        print("a.shape")
-        print(a.shape)
-
-        a = a[cp.newaxis,...]
-
-        print("new a.shape")
-        print(a.shape)
-
-        print("b.shape")
-        print(b.shape)
-
-        input()
-
-        print("a.nbytes")
-        print(a.nbytes)
-
-        print("b.nbytes")
-        print(b.nbytes)
-
-        input()
-
-        print("cp.sum(a[...,cp.newaxis]*b[:,cp.newaxis,...], axis=-2, dtype=cp.float16)")
-        print(cp.sum(a*b, axis=-2, dtype=cp.float16))
-
-        print("a*b.nbytes")
-        print((a*b).nbytes)
-
-        input()
-
-        print("a*b.shape")
-        print((a*b).shape)
-
-        input()
-
-        print("cp.matmul(a, b).shape")
-        print(cp.matmul(a, b).shape)
-
-        input()
-        return cp.matmul(a, b)
-    else:
-        a = a[...,0]
-        b = b[:,0,:,:]
-        return cp.matmul(a, b)[...,np.newaxis]
-
-# TODO:  fix matmuls in following function
-# def matmul(a, b, l=False):
-#     """ Does matrix multiplication as a @ b, accounting for
-#         whether either is of dtype=int8.  'l' indicates whether
-#         this matrix operation is being used for a latency weight matrix """
-#     if cp.int8 in [a.dtype, b.dtype]:
-#         # Set up for a=state, b=weights
-#         if not l:
-#             return cp.sum(a[...,cp.newaxis]*b[:,cp.newaxis,...], axis=-2, dtype=cp.float16)
-#         else:
-#             return cp.sum(a[...,cp.newaxis]*b[:,:,cp.newaxis,...], axis=-2, dtype=cp.float16)
-#     else:
-#         a = a[...,0]
-#         b = b[:,0,:,:]
-#         return cp.matmul(a, b)
-
 def relu(x):
     """ Performs relu on x """
-    return cp.maximum(0., x, dtype=x.dtype)
+    return cp.maximum(0., x)
 
 def softmax(x, a=-1):
     """ Performs stable softmax on x, across the last axis by default """
     c = cp.exp(x-cp.amax(x, axis=a, keepdims=True))
-    return c/cp.sum(c, axis=a, keepdims=True).astype(cp.float32)
+    return c/cp.sum(c, axis=a, keepdims=True).astype(cp.float16)
 
 def apply_EI(var, ei):
     """ Applies EI masking to a square variable, according to the given
         excitatory/inhibitory mask """
     return cp.matmul(relu(var), ei)
 
-which_step = 1
-
 def synaptic_plasticity(h, syn_x, syn_u, constants, use_stp, hidden_size):
     """ If required, applies STP updates to the hidden state and STP
         variables.  If not required, just ensures correct hidden shape. """
 
-    # h = h[0,...] if h.ndim == 5 else False
-
     if use_stp:
-
-        global which_step
-
-        print("STARTING SYNAPTIC_PLASTICITY")
-        print("running step {}".format(which_step))
-        print(which_step)
-
-        which_step = which_step+1
-
-        print("syn_x.shape")
-        print(syn_x.shape)
-        print("syn_u.shape")
-        print(syn_u.shape)
-        print("h.shape")
-        print(h.shape)
-
-        # input()
-
         syn_x += constants['alpha_std']*(1-syn_x) - constants['stp_mod']*syn_u*syn_x*h
-        syn_u += constants['alpha_stf']*(constants['U']-syn_u) + constants['stp_mod']*constants['U']*(1-syn_u)*h
+        syn_u += constants['alpha_stf']*(constants['U']-syn_x) - constants['stp_mod']*constants['U']*(1-syn_u)*h
         syn_x = cp.minimum(1., relu(syn_x))
         syn_u = cp.minimum(1., relu(syn_u))
         h_post = syn_u*syn_x*h
     else:
-        h_post = h*cp.ones([1,1,hidden_size], dtype=h.dtype)
+        h_post = h*cp.ones([1,1,hidden_size], dtype=cp.float16)
 
     return h_post, syn_x, syn_u
 
@@ -168,7 +77,7 @@ def run_adex(V, w, I, constants):
     w_next      = adex_adaptation(V, w, constants)
     V, w, spike = adex_spike(V_next, w_next, constants)
 
-    return V.astype(cp.float32), w.astype(cp.float32), spike.astype(cp.int8)
+    return V.astype(cp.float16), w.astype(cp.float16), spike.astype(cp.float16)
 
 def adex_membrane(V, w, I, c):
     """ Calculate the new membrane potential """
@@ -203,7 +112,7 @@ def cross_entropy(mask, target, output, eps=1e-16):
     mask   = mask.astype(cp.float32)
     target = target.astype(cp.float32)
     output = output.astype(cp.float32)
-    return -cp.mean(mask[...,cp.newaxis]*target*cp.log(softmax(output)+eps), axis=(0,2,3)).astype(cp.float32)
+    return -cp.mean(mask[...,cp.newaxis]*target*cp.log(softmax(output)+eps), axis=(0,2,3)).astype(cp.float16)
 
 
 ### Optimization functions
@@ -215,8 +124,7 @@ def cross(var1, var2, rate):
 def mutate(var, num, rate, scale, epsilon=0.):
     """ Mutates a given variable by a given rate and scale,
         generating as many offspring as num """
-    #mutation_mask = cp.random.random(size=[num, *var.shape], dtype=np.float32).astype(cp.float32)
-    mutation_mask = cp.random.random(size=[num, *var.shape]).astype(cp.float32)
+    mutation_mask = cp.random.random(size=[num, *var.shape], dtype=np.float32).astype(cp.float16)
     mutation = cp.random.normal(loc=epsilon, scale=scale, size=[num, *var.shape])
     return var[cp.newaxis,...] + mutation*mutation_mask
 
@@ -235,4 +143,4 @@ def accuracy(output, target, mask, inc_fix=False):
 
     acc = cp.sum(mask * (arg_output == arg_target), axis=(0,2))/cp.sum(mask, axis=(0,2))
 
-    return acc.astype(cp.float32)
+    return acc.astype(cp.float16)
