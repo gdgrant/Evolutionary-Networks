@@ -53,7 +53,7 @@ class NetworkController:
         GA_constants    = ['mutation_rate', 'mutation_strength', 'cross_rate', 'loss_baseline', 'temperature']
         ES_constants    = ['ES_learning_rate', 'ES_sigma']
 
-        w_hack_constants  = ['h_time','h_time_long']
+        w_hack_constants  = ['h_time','h_window']
 
         local_learning_constants = ['local_learning_rate']
 
@@ -137,31 +137,49 @@ class NetworkController:
 
         # Loop across time and collect network output into y, using the
         # desired recurrent cell type
-        bin = 0
-        count = 0
-        self.h_hist = cp.zeros((len(par['h_time']),par['n_networks'],par['batch_size'],par['n_hidden']))
+        window_count = -1
+        count_within_window = 0
+        within_window = False
+        self.h_hist = cp.zeros((par['n_networks'],len(par['h_time']), par['batch_size'],par['n_hidden']))
         for t in range(par['num_time_steps']):
+
             if par['cell_type'] == 'rate':
                 spike, syn_x, syn_u = self.rate_recurrent_cell(spike, self.input_data[t], syn_x, syn_u, t)
-                if par['use_w_hack'] and t in self.con_dict['h_time_long']:
-                    if count < par['h_window']:
-                        count += 1
-                    else:
-                        count = 0
-                        bin += 1
-                    self.h_hist[bin] += spike
+                if par['use_w_hack'] and t in self.con_dict['h_time']:
+                    #print(t, window_count)
+                    window_count += 1
+                    count_within_window = 1
+                    within_window = True if count_within_window < par['h_window'] else False
+                    self.h_hist[:, window_count, :, :] += spike
+                elif par['use_w_hack'] and within_window:
+                    #print(t, window_count, 'within', par['h_window'], within_window)
+                    count_within_window += 1
+                    within_window = True if count_within_window < par['h_window'] else False
+                    self.h_hist[:, window_count, :, :] += spike
+
                 self.y[t,...] = matmul(spike, self.var_dict['W_out']) + self.var_dict['b_out']
                 self.spiking_means += cp.mean(spike, axis=(1,2))/self.con_dict['num_time_steps']
+
 
             elif par['cell_type'] == 'adex':
                 spike, state, adapt, syn_x, syn_u = self.AdEx_recurrent_cell(spike, state, adapt, self.input_data[t], syn_x, syn_u, t)
                 self.y[t,...] = (1-self.con_dict['beta_neuron'])*self.y[t-1,...] \
                     + self.con_dict['beta_neuron']*matmul(spike, self.var_dict['W_out'])
                 self.spiking_means += cp.mean(spike, axis=(1,2))*1000/self.con_dict['num_time_steps']
+                if par['use_w_hack'] and t in self.con_dict['h_time']:
+                    #print(t, window_count)
+                    window_count += 1
+                    count_within_window = 1
+                    within_window = True if count_within_window < par['h_window'] else False
+                    self.h_hist[:, window_count, :, :] += spike
+                elif par['use_w_hack'] and within_window:
+                    #print(t, window_count, 'within', par['h_window'], within_window)
+                    count_within_window += 1
+                    within_window = True if count_within_window < par['h_window'] else False
+                    self.h_hist[:, window_count, :, :] += spike
 
             if par['local_learning']:
                 self.local_learning(t=t, spike=spike)
-
         self.h_hist /= par['h_window']
 
 
@@ -223,37 +241,41 @@ class NetworkController:
     def calculate_weight(self):
 
         # TODO: fix reshape dimension to be flexible
-        self.W_out_calc = cp.zeros(self.var_dict['W_out'].shape)
-        self.b_out_calc = cp.zeros(self.var_dict['b_out'].shape)
+        self.W_out_calc = cp.zeros_like(self.var_dict['W_out'])
+        self.b_out_calc = cp.zeros_like(self.var_dict['b_out'])
 
         # hW + b = y
-        self.h_hist = cp.reshape(self.h_hist, (par['n_networks'], par['batch_size']*len(self.con_dict['h_time']), par['n_hidden']))
+        N = par['batch_size']*len(self.con_dict['h_time'])
+        #self.h_hist = cp.log(0.1 + cp.reshape(self.h_hist, (par['n_networks'], N, par['n_hidden'])))
+        self.h_hist = cp.reshape(self.h_hist, (par['n_networks'], N, par['n_hidden']))
 
         # h_hist: network x (5xbatch) x neuron
-        output = cp.reshape(self.output_data[self.con_dict['h_time']][:,0,:,:], \
-                            (par['batch_size']*len(self.con_dict['h_time']), par['n_output']))
+        output = cp.reshape(self.output_data[self.con_dict['h_time'], :, :], (N, par['n_output']))
 
         for n in range(par['n_networks']):
-            h_aug = cp.concatenate((self.h_hist[n], cp.ones((par['batch_size']*len(self.con_dict['h_time']),1))),axis=1)
+            h_aug = cp.concatenate((self.h_hist[n, :, :], cp.ones((N,1))),axis=1)
             W_aug = to_gpu(np.linalg.lstsq(to_cpu(h_aug), to_cpu(output))[0])
+
+            #print(h_aug.shape, output.shape, W_aug.shape)
+            #1/0
             #W_aug = cp.matmul(cp.matmul(cp.linalg.inv(cp.matmul(h_aug.T, h_aug)+0.00001*cp.identity(h_aug.shape[1])), h_aug.T), output)
 
-            self.W_out_calc[n] = W_aug[:par['n_hidden']]
-            self.b_out_calc[n] = W_aug[par['n_hidden']:]
+            self.W_out_calc[n, :, :] = W_aug[:par['n_hidden'], :]
+            self.b_out_calc[n, :, :] = W_aug[par['n_hidden']:, :]
 
 
-    def judge_models(self):
+    def judge_models(self, iteration):
         """ Determine the loss of each model, and rank them accordingly """
 
         # Calculate the task loss of each network (returns an array of size [n_networks])
-        if par['use_w_hack']:
+        if par['use_w_hack'] and iteration>10:
             print("Initial task loss:",\
                   cross_entropy(self.output_mask, self.output_data, self.y).mean())
             self.calculate_weight()
             self.var_dict['W_out'] = self.W_out_calc
             self.var_dict['b_out'] = self.b_out_calc
             self.run_models()
-            
+
         self.task_loss = cross_entropy(self.output_mask, self.output_data, self.y)
         print("Adjusted task loss:",self.task_loss.mean())
 
@@ -274,6 +296,8 @@ class NetworkController:
 
         # Rank the networks (returns [n_networks] indices)
         self.rank = cp.argsort(self.loss.astype(cp.float32)).astype(cp.int16)
+        #acc = self.get_performance(ranked = False)
+        #self.rank = cp.argsort(-acc[0].astype(cp.float32)).astype(cp.int16)
 
         # Sort the weights if required by the current learning method
         if par['learning_method'] in ['GA', 'TA']:
@@ -283,9 +307,13 @@ class NetworkController:
                 if par['local_learning'] and name in par['local_learning_vars']:
                     self.local_delta[name] = self.local_delta[name][self.rank,...]
 
-            if par['use_w_hack']:
+            """
+            if False and par['use_w_hack']:
                 self.var_dict['W_out'] = self.W_out_calc[self.rank]
                 self.var_dict['b_out'] = self.b_out_calc[self.rank]
+            """
+
+
 
 
 
@@ -368,9 +396,13 @@ class NetworkController:
 
         self.var_dict['W_rnn'] *= self.con_dict['W_rnn_mask']
 
-        if par['use_w_hack']:
+
+        """
+        if False and par['use_w_hack']:
             self.var_dict['W_out'] = self.W_out_calc[self.rank]
             self.var_dict['b_out'] = self.b_out_calc[self.rank]
+        """
+
 
 
 
@@ -482,7 +514,7 @@ def main():
     # Get loss baseline and update the ensemble reference accordingly
     control.load_batch(stim.make_batch())
     control.run_models()
-    control.judge_models()
+    control.judge_models(0)
     loss_baseline = np.nanmean(control.get_losses(is_ranked))
     control.update_constant('loss_baseline', loss_baseline)
 
@@ -497,7 +529,7 @@ def main():
         # Process a batch of stimulus using the current models
         control.load_batch(stim.make_batch())
         control.run_models()
-        control.judge_models()
+        control.judge_models(i)
 
         # Get the current loss scores
         loss = control.get_losses(is_ranked)

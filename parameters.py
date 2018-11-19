@@ -6,7 +6,7 @@ global par
 par = {
 
     'save_dir'              : './savedir/',
-    'save_fn'               : 'adex_ga_slow.pkl',
+    'save_fn'               : 'adex_test.pkl',
     'iters_per_output'      : 1,
     'datatype'              : 'float32',    # 'float32', 'float16', 'int8'
     'load_previous_fn'      : None, #'adex_ga_large_slow_v2.pkl', # set this to None if you wish to start from scratch
@@ -53,7 +53,7 @@ par = {
     'adam_beta2'            : 0.999,
     'adam_epsilon'          : 1e-8,
 
-    'n_networks'            : 1001,
+    'n_networks'            : 1000,
     'n_hidden'              : 100,
     'n_output'              : 3,
 
@@ -63,34 +63,34 @@ par = {
     'num_receptive_fields'  : 1,
     'num_motion_dirs'       : 8,
 
-    'input_gamma'           : 0.08*8,# *15 works for n_hidden=100
-    'rnn_gamma'             : 0.04*8,
+    'input_gamma'           : 0.1*1,# *15 works for n_hidden=100
+    'rnn_gamma'             : 0.05*1,
     'output_gamma'          : 0.08,
-    'noise_rnn_sd'          : 0.05,
-    'noise_in_sd'           : 0.05,
+    'noise_rnn_sd'          : 0.5,
+    'noise_in_sd'           : 0.1,
 
     'dt'                    : 20,
-    'membrane_constant'     : 20,
+    'membrane_constant'     : 100,
     'output_constant'       : 40,
 
-    'tau_fast'              : 100,
-    'tau_slow'              : 800,
+    'tau_fast'              : 200,
+    'tau_slow'              : 1500,
 
-    'dead_time'             : 50,
-    'fix_time'              : 50,
-    'sample_time'           : 100,
-    'delay_time'            : 50,
-    'test_time'             : 150,
+    'dead_time'             : 100,
+    'fix_time'              : 100,
+    'sample_time'           : 200,
+    'delay_time'            : 500,
+    'test_time'             : 300,
     'mask_time'             : 20,
     'fixation_on'           : False,
 
     'use_w_hack'            : True,
-    'h_time'                : [190,210,230,280,300,320],
+    'h_time'                : [200, 220, 240, 260, 800, 820, 850, 870, 950, 970, 990, 1010, 1030, 1050, 1070, 1090, 1110],
     'h_window'              : 20,
 
     'survival_rate'         : 0.1,
-    'mutation_rate'         : 0.1,
-    'mutation_strength'     : 0.20,
+    'mutation_rate'         : 1.,
+    'mutation_strength'     : 2.,
     'cross_rate'            : 0.00,
     'use_crossing'          : False,
     'loss_baseline'         : 10.,
@@ -98,7 +98,7 @@ par = {
     'task'                  : 'dms',
     'kappa'                 : 2.0,
     'tuning_height'         : 4.0,
-    'response_multiplier'   : 4.0,
+    'response_multiplier'   : 1.0,
     'num_rules'             : 1,
 
 }
@@ -134,12 +134,9 @@ def update_dependencies():
 
     par['trial_length'] = par['dead_time'] + par['fix_time'] + +par['sample_time'] + par['delay_time'] + par['test_time']
     par['num_time_steps'] = par['trial_length'] // par['dt']
-    
+
     par['h_time'] = np.array(par['h_time']) // par['dt']
     par['h_window'] = np.array(par['h_window']) // par['dt']
-    par['h_time_long'] = np.zeros(len(par['h_time'])*par['h_window'])
-    for i in range(0,len(par['h_time']),par['h_window']):
-        par['h_time_long'][i:i+par['h_window']] = np.arange(par['h_time'][i], par['h_time'][i]+par['h_window'])
 
     par['n_input'] = par['num_motion_tuned']*par['num_receptive_fields'] + par['num_fix_tuned'] + par['num_rule_tuned']
     par['n_EI'] = int(par['n_hidden']*par['EI_prop'])
