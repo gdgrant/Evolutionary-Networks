@@ -14,7 +14,7 @@ par = {
 
     'learning_method'       : 'GA',     # Evo search = 'ES', genetic = 'GA'
     'cell_type'             : 'rate',   # 'rate', 'adex'
-    'use_stp'               : True,
+    'use_stp'               : False,
 
     'EI_prop'               : 0.8,
     'balance_EI'            : True,
