@@ -89,6 +89,7 @@ class NetworkController:
         # Apply the EI mask to the recurrent weights
         self.W_rnn_effective = apply_EI(self.var_dict['W_rnn'], self.con_dict['EI_mask'])
 
+
         # Loop across time and collect network output into y, using the
         # desired recurrent cell type
         for t in range(par['num_time_steps']):
@@ -98,7 +99,7 @@ class NetworkController:
                 self.spiking_means += cp.mean(spike, axis=(1,2))/self.con_dict['num_time_steps']
 
             elif par['cell_type'] == 'adex':
-                spike, state, adapt = self.AdEx_recurrent_cell(spike, state, adapt, input_data[t], syn_x, syn_u, t)
+                spike, state, adapt, syn_x, syn_u = self.AdEx_recurrent_cell(spike, state, adapt, input_data[t], syn_x, syn_u, t)
                 self.y[t,...] = (1-self.con_dict['beta_neuron'])*self.y[t-1,...] \
                     + self.con_dict['beta_neuron']*cp.matmul(spike, self.var_dict['W_out'])
                 self.spiking_means += cp.mean(spike, axis=(1,2))*1000/self.con_dict['num_time_steps']
@@ -154,7 +155,7 @@ class NetworkController:
             self.con_dict, par['use_stp'], par['n_hidden'])
 
         # Calculate the current incident on the hidden neurons
-        I = cp.matmul(rnn_input, self.var_dict['W_in']) + self.rnn_matmul(spike_post, self.W_rnn_effective)
+        I = cp.matmul(rnn_input, self.var_dict['W_in']) + self.rnn_matmul(spike_post, self.W_rnn_effective, t)
         V, w, spike = run_adex(V, w, I, self.con_dict['adex'])
 
         return spike, V, w, syn_x, syn_u
