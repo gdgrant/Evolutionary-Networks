@@ -11,7 +11,7 @@ class NetworkController:
     def make_variables(self):
         """ Pull variables into GPU """
 
-        var_names = ['W_in', 'W_out', 'W_rnn', 'b_rnn', 'b_out', 'h_init']
+        var_names = ['W_in', 'W_pred', 'W_out', 'W_rnn', 'b_rnn', 'b_out', 'h_init']
         self.var_dict = {}
         for v in var_names:
             self.var_dict[v] = to_gpu(par[v+'_init'])
@@ -56,8 +56,9 @@ class NetworkController:
         self.W_rnn_effective = apply_EI(self.var_dict['W_rnn'], self.con_dict['EI_mask'])
 
         for t in range(par['num_time_steps']):
-            h, syn_x, syn_u = self.recurrent_cell(h, input_data[t], syn_x, syn_u)
+            h, syn_x, syn_u, error = self.predictive_cell(h, input_data[t], syn_x, syn_u)
             self.y[t,...] = cp.matmul(h, self.var_dict['W_out']) + self.var_dict['b_out']
+            self.error = error
 
 
     def run_and_record_models(self, input_data):
@@ -104,6 +105,27 @@ class NetworkController:
             + cp.random.normal(scale=self.con_dict['noise_rnn'], size=h.shape))
 
         return h, syn_x, syn_u
+
+    def predictive_cell(self, h, rnn_input, syn_x, syn_u):
+
+        if par['use_stp']:
+            syn_x += self.con_dict['alpha_std']*(1-syn_x) - self.con_dict['dt_sec']*syn_u*syn_x*h
+            syn_u += self.con_dict['alpha_stf']*(self.con_dict['U']-syn_x) - self.con_dict['dt_sec']*self.con_dict['U']*(1-syn_u)*h
+            syn_x = cp.minimum(1., relu(syn_x))
+            syn_u = cp.minimum(1., relu(syn_u))
+            h_post = syn_u*syn_x*h
+        else:
+            h_post = h
+
+        error = relu(cp.matmul(rnn_input, self.var_dict['W_in']) - cp.matmul(self.var_dict['W_pred'], h_post)) + \
+                + relu(cp.matmul(self.var_dict['W_pred'], h_post) - cp.matmul(rnn_input, self.var_dict['W_in']))
+
+        h = relu((1-self.con_dict['alpha_neuron'])*h \
+            + self.con_dict['alpha_neuron']*(cp.matmul(error, self.var_dict['W_in']) \
+            + cp.matmul(h_post, self.W_rnn_effective) + self.var_dict['b_rnn']) + \
+            + cp.random.normal(scale=self.con_dict['noise_rnn'], size=h.shape))
+
+        return h, syn_x, syn_u, error
 
 
     def judge_models(self, output_data, output_mask):

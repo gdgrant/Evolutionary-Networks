@@ -72,6 +72,7 @@ def update_dependencies():
 
     par['h_init_init']  = 0.1*np.ones([par['n_networks'], 1,par['n_hidden']], dtype=np.float16)
     par['W_in_init']    = np.float16(np.random.gamma(shape=par['input_gamma'], scale=1., size=[par['n_networks'], par['n_input'], par['n_hidden']]))
+    par['W_pred_init']  = np.float16(np.random.gamma(shape=par['input_gamma'], scale=1., size=[par['n_networks'], par['batch_size'], par['batch_size']]))
     par['W_out_init']   = np.float16(np.random.gamma(shape=par['input_gamma'], scale=1., size=[par['n_networks'], par['n_hidden'], par['n_output']]))
     par['W_rnn_init']   = np.float16(np.random.gamma(shape=par['rnn_gamma'], scale=1., size=[par['n_networks'], par['n_hidden'], par['n_hidden']]))
 
