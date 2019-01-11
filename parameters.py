@@ -70,6 +70,16 @@ def update_dependencies():
 
     par['n_input'] = par['num_motion_tuned']*par['num_receptive_fields'] + par['num_fix_tuned'] + par['num_rule_tuned']
 
+    '''
+    I(t) shape              (batch_size x n_input)
+    H(t-1) shape            (n_networks x batch_size x n_hidden)
+    Want: Pred shape        (n_networks x batch_size x n_input)
+    So W_pred shape         (n_networks x n_hidden x n_input)
+    e(t) shape              (n_networks x batch_size x 2*(n_input))
+    Want H(t) shape         (n_networks x batch_size x n_hidden)
+    So W_in shape           (n_networks x 2*(n_input) x n_hidden)
+    '''
+
     par['h_init_init']  = 0.1*np.ones([par['n_networks'], 1,par['n_hidden']], dtype=np.float16)
     par['W_in_init']    = np.float16(np.random.gamma(shape=par['input_gamma'], scale=1., size=[par['n_networks'], 2 * par['n_input'], par['n_hidden']]))
     par['W_pred_init']  = np.float16(np.random.gamma(shape=par['input_gamma'], scale=1., size=[par['n_networks'], par['n_hidden'], par['n_input']]))

@@ -119,10 +119,12 @@ class NetworkController:
             h_post = h
         
         #DON'T USE THIS
-        error = relu(cp.matmul(rnn_input) - cp.matmul(h_post, self.var_dict['W_pred'])) + \
-                + relu(cp.matmul(h_post, self.var_dict['W_pred']) - cp.matmul(rnn_input))
+        #error = relu(cp.matmul(rnn_input) - cp.matmul(h_post, self.var_dict['W_pred'])) + \
+        #        + relu(cp.matmul(h_post, self.var_dict['W_pred']) - cp.matmul(rnn_input))
 
-        #error = relu(rnn_input - cp.matmul(h_post, self.var_dict['W_pred'])) <concat with> relu（otherthing）
+        poserr = relu(rnn_input - cp.matmul(self.var_dict['W_pred'], h_post))
+        negerr = relu(- rnn_input + cp.matmul(self.var_dict['W_pred'], h_post))
+        error = cp.concat((poserr, negerr), axis = 2)
 
         h = relu((1-self.con_dict['alpha_neuron'])*h \
             + self.con_dict['alpha_neuron']*(cp.matmul(error, self.var_dict['W_in']) \
