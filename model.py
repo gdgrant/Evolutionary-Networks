@@ -49,6 +49,7 @@ class NetworkController:
         input_data = to_gpu(input_data)
 
         self.y = cp.zeros([par['num_time_steps'], par['n_networks'], par['batch_size'], par['n_output']], dtype=cp.float16)
+        self.error = cp.zeros([par['num_time_steps'], par['n_networks'], par['batch_size'], 2 * par['n_input']], dtype=cp.float16)
         h      = self.var_dict['h_init']     * cp.ones([par['n_networks'],par['batch_size'],1], dtype=cp.float16)
         syn_x  = self.con_dict['syn_x_init'] * cp.ones([par['n_networks'],par['batch_size'],1], dtype=cp.float16)
         syn_u  = self.con_dict['syn_u_init'] * cp.ones([par['n_networks'],par['batch_size'],1], dtype=cp.float16)
@@ -58,7 +59,7 @@ class NetworkController:
         for t in range(par['num_time_steps']):
             h, syn_x, syn_u, error = self.predictive_cell(h, input_data[t], syn_x, syn_u)
             self.y[t,...] = cp.matmul(h, self.var_dict['W_out']) + self.var_dict['b_out']
-            self.error = error
+            self.error[t, ...] = error
 
 
     def run_and_record_models(self, input_data):
@@ -116,9 +117,12 @@ class NetworkController:
             h_post = syn_u*syn_x*h
         else:
             h_post = h
+        
+        #DON'T USE THIS
+        error = relu(cp.matmul(rnn_input) - cp.matmul(h_post, self.var_dict['W_pred'])) + \
+                + relu(cp.matmul(h_post, self.var_dict['W_pred']) - cp.matmul(rnn_input))
 
-        error = relu(cp.matmul(rnn_input, self.var_dict['W_in']) - cp.matmul(self.var_dict['W_pred'], h_post)) + \
-                + relu(cp.matmul(self.var_dict['W_pred'], h_post) - cp.matmul(rnn_input, self.var_dict['W_in']))
+        #error = relu(rnn_input - cp.matmul(h_post, self.var_dict['W_pred'])) <concat with> relu（otherthing）
 
         h = relu((1-self.con_dict['alpha_neuron'])*h \
             + self.con_dict['alpha_neuron']*(cp.matmul(error, self.var_dict['W_in']) \
