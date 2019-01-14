@@ -1,5 +1,5 @@
-import sys
-import itertools
+import sys 
+import itertools 
 import pickle
 
 import numpy as np
@@ -54,7 +54,9 @@ def cross(var1, var2, rate):
 def mutate(var, num, rate, scale):
     """ Mutates a given variable by a given rate and scale,
         generating as many offspring as num """
-    mutation_mask = cp.random.random(size=[num, *var.shape], dtype=np.float32).astype(cp.float16)
+    #mutation_mask = cp.random.random(size=[num, *var.shape], dtype=np.float32).astype(cp.float16)
+    #Seems like there is no dtype kwarg for rando_sample()
+    mutation_mask = cp.random.random(size=[num, *var.shape]).astype(cp.float16)
     mutation = cp.random.normal(scale=scale, size=[num, *var.shape])
     return var[cp.newaxis,...] + mutation*mutation_mask
 

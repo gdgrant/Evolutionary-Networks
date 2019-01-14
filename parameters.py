@@ -9,9 +9,9 @@ par = {
     'use_stp'               : True,
     'EI_prop'               : 0.8,
     'iters_per_output'      : 5,
-
-    'n_networks'            : 2000,
-    'n_hidden'              : 100,
+    #Parameters for PC testing use,
+    'n_networks'            : 20, #2000
+    'n_hidden'              : 10, #100
     'n_output'              : 3,
 
     'num_motion_tuned'      : 24,

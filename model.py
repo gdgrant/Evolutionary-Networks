@@ -36,7 +36,7 @@ class NetworkController:
         self.con_dict[con_name] = to_gpu(con)
 
 
-    def update_mutation_constants(self, strength, rate):
+    def update_mutation_constants(self, strength, rate): 
         """ Update the mutation strength and rate """
 
         self.con_dict['mutation_strength'] = to_gpu(strength)
@@ -47,6 +47,9 @@ class NetworkController:
         """ Run model based on input data, collecting network outputs into y """
 
         input_data = to_gpu(input_data)
+
+        #For debugging purposes
+        #print(par['n_input'])
 
         self.y = cp.zeros([par['num_time_steps'], par['n_networks'], par['batch_size'], par['n_output']], dtype=cp.float16)
         self.error = cp.zeros([par['num_time_steps'], par['n_networks'], par['batch_size'], 2 * par['n_input']], dtype=cp.float16)
@@ -60,6 +63,11 @@ class NetworkController:
             h, syn_x, syn_u, error = self.predictive_cell(h, input_data[t], syn_x, syn_u)
             self.y[t,...] = cp.matmul(h, self.var_dict['W_out']) + self.var_dict['b_out']
             self.error[t, ...] = error
+
+        #For debugging purposes
+        #print(par['num_time_steps'])
+        #print(self.y.shape)
+        #print(self.error.shape)
 
 
     def run_and_record_models(self, input_data):
@@ -122,9 +130,9 @@ class NetworkController:
         #error = relu(cp.matmul(rnn_input) - cp.matmul(h_post, self.var_dict['W_pred'])) + \
         #        + relu(cp.matmul(h_post, self.var_dict['W_pred']) - cp.matmul(rnn_input))
 
-        poserr = relu(rnn_input - cp.matmul(self.var_dict['W_pred'], h_post))
-        negerr = relu(- rnn_input + cp.matmul(self.var_dict['W_pred'], h_post))
-        error = cp.concat((poserr, negerr), axis = 2)
+        poserr = relu(rnn_input - cp.matmul(h_post, self.var_dict['W_pred']))
+        negerr = relu(- rnn_input + cp.matmul(h_post, self.var_dict['W_pred']))
+        error = cp.concatenate((poserr, negerr), axis = 2)
 
         h = relu((1-self.con_dict['alpha_neuron'])*h \
             + self.con_dict['alpha_neuron']*(cp.matmul(error, self.var_dict['W_in']) \
@@ -141,7 +149,16 @@ class NetworkController:
         self.output_data = to_gpu(output_data)
         self.output_mask = to_gpu(output_mask)
 
-        self.loss = cross_entropy(self.output_mask, self.output_data, self.y)
+        #Probably a better place to put this
+        zero_error = cp.zeros([45, 1, 128, 56])
+
+        #self.loss = cross_entropy(self.output_mask, self.output_data, self.y)
+        self.y_loss = cross_entropy(self.output_mask, self.output_data, self.y)
+        self.error_loss = cross_entropy(self.output_mask, zero_error, self.error)
+
+        #Weights to be determined
+        self.loss = 0.9 * self.y_loss + 0.1 * self.error_loss
+
         self.loss[cp.where(cp.isnan(self.loss))] = self.con_dict['loss_baseline']
 
         self.rank = cp.argsort(self.loss.astype(cp.float32))
@@ -190,6 +207,10 @@ def main():
     trial_info = stim.make_batch()
     control.run_models(trial_info['neural_input'])
     loss_baseline = np.mean(control.judge_models(trial_info['desired_output'], trial_info['train_mask']))
+    
+    #For debugging purposes
+    #print(trial_info['desired_output'].shape)
+    
     control.update_constant('loss_baseline', loss_baseline)
 
     # Records
@@ -206,6 +227,9 @@ def main():
         trial_info = stim.make_batch()
         control.run_models(trial_info['neural_input'])
         loss = control.judge_models(trial_info['desired_output'], trial_info['train_mask'])
+
+        #For debugging purposes
+        #print(trial_info['train_mask'].shape)
 
         mutation_strength = par['mutation_strength']*np.mean(loss)/loss_baseline
         if np.mean(loss)/loss_baseline < 0.025:
