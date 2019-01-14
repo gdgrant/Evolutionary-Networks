@@ -155,6 +155,7 @@ class NetworkController:
         #self.loss = cross_entropy(self.output_mask, self.output_data, self.y)
         self.y_loss = cross_entropy(self.output_mask, self.output_data, self.y)
         self.error_loss = cross_entropy(self.output_mask, zero_error, self.error)
+        # self.error_loss = cp.mean(self.error**2, axis=[0,2,3]) # <-- Result of the mean should be [n_networks]
 
         #Weights to be determined
         self.loss = 0.9 * self.y_loss + 0.1 * self.error_loss
