@@ -132,7 +132,7 @@ class NetworkController:
 
         poserr = relu(rnn_input - cp.matmul(h_post, self.var_dict['W_pred']))
         negerr = relu(- rnn_input + cp.matmul(h_post, self.var_dict['W_pred']))
-        error = cp.concatenate((poserr, negerr), axis = 2)
+        error = 0.01 * cp.concatenate((poserr, negerr), axis = 2)
 
         h = relu((1-self.con_dict['alpha_neuron'])*h \
             + self.con_dict['alpha_neuron']*(cp.matmul(error, self.var_dict['W_in']) \
@@ -155,10 +155,17 @@ class NetworkController:
         #self.loss = cross_entropy(self.output_mask, self.output_data, self.y)
         self.y_loss = cross_entropy(self.output_mask, self.output_data, self.y)
        # self.error_loss = cross_entropy(self.output_mask, zero_error, self.error)
-        self.error_loss = cp.mean(self.error**2, axis=[0,2,3]) # <-- Result of the mean should be [n_networks]
+        self.error_loss = cp.mean(self.error**2, axis=[0,2,3]) # <-- Result of the mean shouldibe [n_networks]
 
         #Weights to be determined
-        self.loss = 0.9 * self.y_loss + 0.1 * self.error_loss
+        self.loss = 0 * self.y_loss + 0.01 * self.error_loss
+        ################################################################         
+        #############         so that loss is not inf      #############
+        #############                                      #############
+        ################################################################
+
+        #the size of self.loss
+        #lsize = size
 
         self.loss[cp.where(cp.isnan(self.loss))] = self.con_dict['loss_baseline']
 
@@ -209,7 +216,7 @@ def main():
     control.run_models(trial_info['neural_input'])
     loss_baseline = np.mean(control.judge_models(trial_info['desired_output'], trial_info['train_mask']))
     
-    #For debugging purposes
+    #For debugging purposes)
     #print(trial_info['desired_output'].shape)
     
     control.update_constant('loss_baseline', loss_baseline)
@@ -233,12 +240,32 @@ def main():
         #print(trial_info['train_mask'].shape)
 
         mutation_strength = par['mutation_strength']*np.mean(loss)/loss_baseline
+        #print("this is to determine why mt is nan")
+        print("this is to determine the shape of loss")
+        print(loss.shape)
+        #print("this is to find when does the loss turn into inf")
+        #for i in range(2000):
+        #    if loss[i] >= 1000:
+        #        print(loss[i - 1])
+        #        print(i)
+        #        break
+        #print("this is the loss")
+        #print(loss)
+        #print("this is np.mean of loss")
+        #print(np.mean(loss))
+        #print("this is loss baseline")
+        #print(loss_baseline)
         if np.mean(loss)/loss_baseline < 0.025:
             mutation_strength = par['mutation_strength']*np.mean(loss)/loss_baseline * (1/8)
         elif np.mean(loss)/loss_baseline < 0.05:
             mutation_strength = par['mutation_strength']*np.mean(loss)/loss_baseline * (1/4)
         elif np.mean(loss)/loss_baseline < 0.1:
             mutation_strength = par['mutation_strength']*np.mean(loss)/loss_baseline * (1/2)
+        #mutation_strength = np.minimum(mutation_strength, par['mutation_strength']
+        print("this is mutation strength")
+        print(mutation_strength)
+        #print("then see par of mt")
+        #print(par["mutation_strength"])
         control.update_mutation_constants(mutation_strength, par['mutation_rate'])
         control.breed_models()
 
